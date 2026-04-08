@@ -1,3 +1,3 @@
 [tools]
-darklua = "Stefanuk12/darklua@0.17.4"
+darklua = "seaofvoices/darklua@0.18.0"
 lune = "lune-org/lune@0.10.4"

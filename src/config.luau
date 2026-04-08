@@ -23,12 +23,32 @@ export type DeploymentConfig = {
 	github: DeployGithubConfig?,
 }
 
+export type HookScript = {
+	command: string?,
+	script: string?,
+	args: { string }?,
+	env: { [string]: string }?,
+}
+
+export type TaskHooks = {
+	preBuild: HookScript?,
+	postBuild: HookScript?,
+}
+
+export type PipelineHooks = {
+	preDeploy: HookScript?,
+	postDeploy: HookScript?,
+	preAllBuilds: HookScript?,
+	postAllBuilds: HookScript?,
+}
+
 export type BuildVariant = {
 	name: string?,
 	input: string?,
 	output: string?,
 	frame: string?,
 	darkluaConfig: string?,
+	hooks: TaskHooks?,
 }
 
 export type BuildConfig = {
@@ -45,6 +65,8 @@ export type BuildConfig = {
 	prerelease: boolean?,
 	openComposedOutput: OpenFileConfig?,
 	variants: { BuildVariant }?,
+	hooks: TaskHooks?,
+	pipelineHooks: PipelineHooks?,
 }
 
 export type PcmpConfig = {
@@ -69,14 +91,13 @@ export type BuildTask = {
 	darkluaConfig: string,
 	prerelease: boolean?,
 	openComposedOutput: OpenFileConfig?,
+	hooks: TaskHooks?,
 }
 
 --// Constants
-
 local LOCAL_CONFIG_SUFFIX = ".local.json"
 
 --// Private Methods
-
 local function resolveOpenComposedOutput(local_: OpenFileConfig?, global_: OpenFileConfig?): OpenFileConfig?
 	return if local_ ~= nil then local_ else global_
 end
@@ -86,8 +107,32 @@ local function deriveLocalPath(configPath: string): string
 	return stem .. LOCAL_CONFIG_SUFFIX
 end
 
---// Public Methods
+local function mergeHooks(base: TaskHooks?, override: TaskHooks?): TaskHooks?
+	if not base and not override then
+		return nil
+	end
+	local merged: TaskHooks = {}
+	if base then
+		merged.preBuild = base.preBuild
+		merged.postBuild = base.postBuild
+	end
+	if override then
+		if override.preBuild ~= nil then
+			merged.preBuild = override.preBuild
+		end
+		if override.postBuild ~= nil then
+			merged.postBuild = override.postBuild
+		end
+	end
 
+	if merged.preBuild == nil and merged.postBuild == nil then
+		return nil
+	end
+
+	return merged
+end
+
+--// Public Methods
 local function load(configPath: string): PcmpConfig
 	if not fs.isFile(configPath) then
 		error(`[pcmp] Config file not found: {configPath}`)
@@ -156,6 +201,7 @@ local function expandBuildConfig(bc: BuildConfig, globalOpen: OpenFileConfig?): 
 					darkluaConfig = bc.darkluaConfig,
 					prerelease = bc.prerelease,
 					openComposedOutput = resolvedOpen,
+					hooks = bc.hooks,
 				})
 			end
 		end
@@ -175,6 +221,7 @@ local function expandBuildConfig(bc: BuildConfig, globalOpen: OpenFileConfig?): 
 			darkluaConfig = bc.darkluaConfig,
 			prerelease = bc.prerelease,
 			openComposedOutput = resolvedOpen,
+			hooks = bc.hooks,
 		})
 
 		if bc.variants then
@@ -187,6 +234,7 @@ local function expandBuildConfig(bc: BuildConfig, globalOpen: OpenFileConfig?): 
 					darkluaConfig = variant.darkluaConfig or bc.darkluaConfig,
 					prerelease = bc.prerelease,
 					openComposedOutput = resolvedOpen,
+					hooks = mergeHooks(bc.hooks, variant.hooks),
 				})
 			end
 		end
