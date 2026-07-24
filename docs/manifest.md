@@ -4,7 +4,7 @@ description: Every field, in one annotated manifest.
 
 # Manifest
 
-`pcmp.luau`, `pcmp.json`, `pcmp.jsonc`, `pcmp.json5` or `pcmp.toml` — all resolve to the
+`pcmp.luau`, `pcmp.json`, `pcmp.jsonc`, `pcmp.json5` and `pcmp.toml` all resolve to the
 same plan. JSON is parsed leniently, so comments and trailing commas are fine. Unknown
 keys are rejected.
 
@@ -40,7 +40,7 @@ return {
 
 	profiles = {
 		base = {
-			abstract = true,                          -- never built; exempt from entry/output
+			abstract = true,                          -- never built, exempt from entry/output
 			entry    = "src/init.luau",               -- a file, or a directory
 			output   = "dist/{profile}/{name}.luau",
 			sources  = { "../shared" },               -- extra input roots
@@ -62,7 +62,7 @@ return {
 			header = {
 				"--!native",
 				"--!optimize 2",
-				"-- {name} {version} — generated, do not edit",
+				"-- {name} {version}, generated, do not edit",
 			},
 
 			-- Ordered: darklua takes the first pattern that matches.
@@ -113,7 +113,9 @@ output = "dist/{channel}/{name}.luau",
 ```
 
 ```lua
-if PCMP_CHANNEL == "stable" then ... end
+if PCMP_CHANNEL == "stable" then
+	enableTelemetry()
+end
 ```
 
 `{profile}` is always available. Matrix axes contribute one token each. `--var` beats
@@ -128,7 +130,7 @@ attached, and the special case bought nothing a token could not do.
 
 ## Inheritance
 
-Nearer wins, field by field. `vars` and `define` accumulate; `darklua` merges key by
+Nearer wins, field by field. `vars` and `define` accumulate. `darklua` merges key by
 key, so a profile can set `generator` without restating the `bundle` it inherited.
 
 ```lua
@@ -147,13 +149,13 @@ A cycle is reported as `cyclic-extends` with the full chain.
 
 ## Entry and output
 
-A file in, a file out — bundled, if `darklua.bundle` is set:
+A file in, a file out, bundled if `darklua.bundle` is set:
 
 ```lua
 entry = "src/init.luau", output = "dist/app.luau",
 ```
 
-A directory in, a directory out — every file processed, structure preserved, no
+A directory in, a directory out. Every file processed, structure preserved, no
 bundling:
 
 ```lua
@@ -184,7 +186,7 @@ loaders = {
 }
 ```
 
-Require them **with the extension** — that is how darklua tells a data file from a
+Require them **with the extension**, which is how darklua tells a data file from a
 module:
 
 ```lua
@@ -197,7 +199,7 @@ Available: `copy`, `skip`, `json`, `json_lines`, `toml`, `yaml`, `string`, `buff
 
 {% hint style="info" %}
 This is the one darklua setting ProCMP re-spells. darklua takes the first pattern that
-matches, and a Luau table iterates in hash order — a map here would let the manifest
+matches, and a Luau table iterates in hash order. A map here would let the manifest
 format decide which pattern wins. Declaring loaders in both `loaders` and
 `darklua.loaders` is `darklua-loaders`, an error.
 {% endhint %}
@@ -208,7 +210,7 @@ One task per combination, named by its coordinates.
 
 ```
 $ pcmp plan
-4 task(s) — plan 881efe11b879
+4 task(s), plan 881efe11b879
 
   dist[flavour=dev,target=lune]    out/lune/dev.luau    17 rules
   dist[flavour=dev,target=roblox]  out/roblox/dev.luau  17 rules

@@ -1,8 +1,8 @@
 //! Checks a type checker cannot express.
 //!
 //! Two kinds: rule orderings that will not do what the manifest appears to intend, and
-//! profiles that are declared but do nothing. Both report rather than repair —
-//! [`crate::rules::assemble`] preserves the order a manifest writes, so a lint that
+//! profiles that are declared but do nothing. Both report rather than repair, because
+//! [`crate::rules::assemble`] preserves the order a manifest writes and a lint that
 //! silently rewrote it would make `pcmp explain` a lie.
 //!
 //! Deliberately small. A check no input can trigger reads as coverage while providing

@@ -1,7 +1,7 @@
 [package]
 name         = "procmp"
 description  = "Multi-target build composition for Luau projects."
-version      = "4.0.0-alpha.1"
+version      = "4.0.0"
 edition      = "2024"
 rust-version = "1.90"
 license      = "MIT"

@@ -1,6 +1,6 @@
 //! Findings produced by resolution and linting.
 
-/// Ordering is meaningful — the worst severity in a run is a `max` over the set.
+/// Ordering is meaningful. The worst severity in a run is a `max` over the set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {

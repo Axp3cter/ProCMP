@@ -1,8 +1,8 @@
 //! Scaffolding a new project.
 //!
 //! Writes two files and nothing else: a manifest, and the type definitions that make
-//! it complete in an editor. No directories, no prompts, no `.gitignore` rewriting —
-//! anything it cannot infer is asked for on the command line rather than guessed.
+//! it complete in an editor. No directories, no prompts, no `.gitignore` rewriting.
+//! Anything it cannot infer is asked for on the command line rather than guessed.
 
 use crate::error::{Error, Result};
 use crate::path::AbsPath;

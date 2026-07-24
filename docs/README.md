@@ -4,8 +4,8 @@ description: Bundle one Luau source tree into many build targets from a single m
 
 # ProCMP
 
-One source tree, many artifacts — a minified release, a readable debug build, a Roblox
-variant, a Lune variant — described in one manifest and built in one command.
+One source tree, many artifacts: a minified release, a readable debug build, a Roblox
+variant, a Lune variant. All described in one manifest and built in one command.
 
 [darklua](https://darklua.com) is linked in, so there is no second binary to install and
 nothing to keep in sync.

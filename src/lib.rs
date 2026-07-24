@@ -6,12 +6,12 @@
 //!
 //! # Conventions
 //!
-//! Missing data is reported, never replaced with a placeholder; a default appears only
+//! Missing data is reported, never replaced with a placeholder. A default appears only
 //! where the reason for it appears beside it. Parsing happens once, at the manifest
 //! boundary, and nothing downstream re-validates. Anything a user sees is ordered, and
-//! identical input produces identical bytes. `process::exit` appears only in `main`.
+//! identical input produces identical bytes. `process::exit` appears only in `main`
 //!
-//! Comments carry what the code and the names cannot — a choice whose alternative looks
+//! Comments carry what the code and the names cannot: a choice whose alternative looks
 //! obvious, or a change that would break something non-local. Everything else is left
 //! to the signature.
 

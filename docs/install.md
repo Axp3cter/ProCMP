@@ -22,8 +22,8 @@ sha256sum -c SHA256SUMS --ignore-missing
 cargo install --git https://github.com/Proton-Utilities/ProCMP
 ```
 
-Needs Rust 1.90+. The first build takes a few minutes — darklua and a Luau interpreter
-are compiled in.
+Needs Rust 1.90 or newer. The first build takes a few minutes, because darklua and a
+Luau interpreter are compiled in.
 {% endtab %}
 {% endtabs %}
 

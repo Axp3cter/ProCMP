@@ -1,6 +1,6 @@
 //! Absolute, lexically normalised, UTF-8 paths.
 //!
-//! Normalisation is lexical — no symlink resolution, no existence check — which keeps
+//! Normalisation is lexical: no symlink resolution, no existence check. That keeps
 //! resolution pure and lets a plan be built without touching disk.
 
 use camino::{Utf8Component, Utf8Path, Utf8PathBuf};

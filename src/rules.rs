@@ -1,7 +1,7 @@
 //! Assembling the darklua rule list for a task.
 //!
 //! ProCMP adds no rule vocabulary of its own. A manifest names darklua rules directly,
-//! in the order it wants them, and that order is preserved — `pcmp check` reports an
+//! in the order it wants them, and that order is preserved. `pcmp check` reports an
 //! ordering that will not do what it looks like, rather than silently rewriting it.
 //!
 //! The one thing ProCMP contributes is injection: a `define` becomes an

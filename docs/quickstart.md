@@ -21,8 +21,8 @@ return { version = VERSION }
 ```
 {% endcode %}
 
-`PCMP_VERSION` and `DEBUG` are not runtime globals — ProCMP replaces them with
-literals at build time. See [Vars and defines](defines.md).
+`PCMP_VERSION` and `DEBUG` are not runtime globals. ProCMP replaces them with literals
+at build time. See [Vars and defines](defines.md).
 {% endstep %}
 
 {% step %}
@@ -79,7 +79,7 @@ local a='v1.0.0'return{version=a}
 ```
 {% endcode %}
 
-The version is a literal, and the `if DEBUG` branch is **not in the file** — injecting
+The version is a literal, and the `if DEBUG` branch is **not in the file**. Injecting
 `DEBUG` as a constant made the condition foldable, which made the branch unreachable, so
 darklua removed it.
 

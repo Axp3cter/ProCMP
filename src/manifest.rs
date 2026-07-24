@@ -1,7 +1,8 @@
 //! The config surface, as written by a user.
 //!
-//! The raw shape, before `extends` runs — the only layer where an optional field means
-//! "inherit". [`crate::plan`] resolves these into types where nothing is optional.
+//! The raw shape, before `extends` runs. This is the only layer where an optional
+//! field means "inherit". [`crate::plan`] resolves these into types where nothing is
+//! optional.
 //!
 //! ProCMP owns eight fields. Everything that configures a transformation lives under
 //! [`Profile::darklua`] and is darklua's own configuration format, deserialised by
@@ -59,9 +60,9 @@ pub struct Profile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
 
-    /// Token template for the destination. Required once inheritance has run — there
-    /// is no default, because a guessed location produces artifacts nobody knows to
-    /// look for.
+    /// Token template for the destination. Required once inheritance has run. There is
+    /// no default, because a guessed location produces artifacts nobody knows to look
+    /// for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
 
@@ -91,7 +92,7 @@ pub struct Profile {
     /// Lines written verbatim at the top of each artifact, after darklua runs.
     ///
     /// Written by ProCMP rather than by a darklua rule, because the `dense` and
-    /// `readable` generators discard comments — including Luau directives such as
+    /// `readable` generators discard comments. That includes Luau directives such as
     /// `--!native`, which must survive into a minified build.
     ///
     /// Tokens are expanded.
@@ -139,7 +140,7 @@ impl Define {
     }
 
     /// Parses a `--define KEY=VALUE` value. `true`, `false` and any number are read as
-    /// such; everything else stays a string, which is what a shell mostly produces.
+    /// such. Everything else stays a string, which is what a shell mostly produces.
     pub fn parse(text: &str) -> Self {
         match text {
             "true" => Self::Bool(true),
@@ -160,7 +161,7 @@ impl Define {
 pub enum Rule {
     /// A rule with no parameters.
     Named(String),
-    /// A rule table; the `rule` key names it.
+    /// A rule table, named by its `rule` key.
     Detailed(Map<String, Value>),
 }
 
@@ -201,9 +202,9 @@ pub struct Loader {
 pub struct Matrix {
     /// Profile each generated task starts from.
     pub base: String,
-    /// Axis name to values; the product is the task list.
+    /// Axis name to values. The product is the task list.
     pub axes: IndexMap<String, Vec<String>>,
-    /// Output template; axis values are available as tokens.
+    /// Output template. Axis values are available as tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
     /// Extra defines applied to every generated task.

@@ -4,8 +4,8 @@ description: Tokens for paths, constants for source.
 
 # Vars and defines
 
-Two knobs, one distinction: a **var** names a string used to build a path or a header;
-a **define** names a value substituted into your source.
+Two knobs, one distinction. A **var** names a string used to build a path or a header.
+A **define** names a value substituted into your source.
 
 ```lua
 vars   = { name = "app", channel = "stable" },   -- {name}, {channel}, PCMP_NAME, PCMP_CHANNEL
@@ -13,8 +13,8 @@ define = { DEBUG = false, MAX_RETRY = 3 },       -- DEBUG, MAX_RETRY
 ```
 
 Every var is also a define, because a name worth putting in a path is usually worth
-reading from source. The reverse does not hold — a define can be a boolean or a number,
-and neither belongs in a filename.
+reading from source. The reverse does not hold, because a define can be a boolean or a
+number and neither belongs in a filename.
 
 Both can be set from the command line, which is what makes a manifest reusable across
 environments it was never written to anticipate:
@@ -45,13 +45,13 @@ end
 local channel: string = CHANNEL
 ```
 
-`_G.DEBUG` and `_G["DEBUG"]` work identically. All three are compile-time placeholders —
-after injection none of them appears in the artifact, because the read was replaced by
+`_G.DEBUG` and `_G["DEBUG"]` work identically. All three are compile-time placeholders.
+After injection none of them appears in the artifact, because the read was replaced by
 the value itself.
 
 {% hint style="warning" %}
 `getgenv().DEBUG` does **not** work. It is a function call, so there is nothing to
-replace at build time; it would read a real table at runtime, and the branch would ship.
+replace at build time. It would read a real table at runtime, and the branch would ship.
 {% endhint %}
 
 ## They are removed, not disabled
@@ -77,7 +77,7 @@ return { version = VERSION }
 local a='v1.0.0'return{version=a}
 ```
 
-The branch is gone — not `if false then`, and not left to the Luau optimiser. Code that
+The branch is gone, not `if false then`, and not left to the Luau optimiser. Code that
 is not shipped cannot be read out of your artifact.
 {% endtab %}
 
@@ -108,13 +108,13 @@ vars = { name = "app", version = "v1.0.0" },
 print(PCMP_NAME, PCMP_VERSION, PCMP_PROFILE)   -- "app", "v1.0.0", "release"
 ```
 
-There is no fixed list beyond `PCMP_PROFILE` — the set is whatever you named.
+There is no fixed list beyond `PCMP_PROFILE`. The set is whatever you named.
 
 ## Types
 
 A define is a boolean, a finite number, or a string. The type reaches the cache key, so
-`true` and `"true"` are different builds. Infinity and NaN are rejected
-([`bad-define`](diagnostics.md)) — they have no literal form.
+`true` and `"true"` are different builds. Infinity and NaN are rejected as
+[`bad-define`](diagnostics.md), because they have no literal form.
 
 ## Values from outside
 

@@ -4,9 +4,9 @@
 //! different things in different directories.
 //!
 //! A Luau manifest is a program, and stays reproducible because the interpreter has
-//! nothing nondeterministic left in it — Luau's sandbox removes `os`, `io`, `load`,
-//! `dofile`, `debug` and `coroutine`, and [`REVOKED`] removes the
-//! rest. Its only channel outward is `pcmp.env`.
+//! nothing nondeterministic left in it. Luau's sandbox removes `os`, `io`, `load`,
+//! `dofile`, `debug` and `coroutine`, and [`REVOKED`] removes the rest. Its only
+//! channel outward is `pcmp.env`
 
 use mlua::{Lua, LuaOptions, LuaSerdeExt, StdLib, Value, VmState};
 use std::sync::Arc;
@@ -202,7 +202,7 @@ pub fn eval(source: &str, origin: &str, env: &Env) -> Result<Manifest> {
     lua.set_interrupt(move |_| {
         if steps.fetch_add(1, Ordering::Relaxed) > BUDGET {
             return Err(mlua::Error::runtime(
-                "manifest exceeded its evaluation budget; it must terminate",
+                "manifest exceeded its evaluation budget, so it must terminate",
             ));
         }
         Ok(VmState::Continue)
@@ -266,8 +266,8 @@ fn install_api(lua: &Lua, origin: &str, env: &Env) -> Result<()> {
         .create_function(move |_, name: String| {
             read.get(&name).ok_or_else(|| {
                 mlua::Error::runtime(format!(
-                    "environment variable `{name}` is not set; \
-                     pass `--env {name}=...`, or use pcmp.envOr(name, fallback)"
+                    "environment variable `{name}` is not set. \
+                     Pass `--env {name}=VALUE`, or use pcmp.envOr(name, fallback)"
                 ))
             })
         })

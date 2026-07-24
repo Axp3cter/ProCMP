@@ -18,7 +18,7 @@ pcmp [OPTIONS] <COMMAND>
 </tbody></table>
 
 Discovery looks for `pcmp.luau`, `pcmp.json`, `pcmp.jsonc`, `pcmp.json5` then
-`pcmp.toml`, in the working directory and then each of its ancestors — so `pcmp` works
+`pcmp.toml`, in the working directory and then each of its ancestors, so `pcmp` works
 from anywhere inside a project.
 
 `--var` and `--define` apply after inheritance and work whatever the manifest format.
@@ -35,7 +35,7 @@ Resolve the manifest and print the plan without building.
 
 ```
 $ pcmp plan
-2 task(s) — plan a18350afadee
+2 task(s), plan a18350afadee
 
   debug    dist/debug/app.luau     7 rules
   release  dist/release/app.luau  11 rules
@@ -55,7 +55,7 @@ pcmp build '*target=roblox*'       # across a matrix axis
 pcmp build --no-cache              # rebuild regardless of cached state
 ```
 
-`*` stands for any run of characters and is the only wildcard — a matrix identifier
+`*` stands for any run of characters and is the only wildcard. A matrix identifier
 contains `[`, `]` and `=`, which every glob dialect would read as syntax.
 
 Tasks run in parallel. Failures are collected rather than aborting, so one broken profile
@@ -95,11 +95,11 @@ $ pcmp watch release
 1 built, 0 cached, 0 failed
 ```
 
-The watched set is the same one the cache is keyed on — see [Inputs](inputs.md) — so
-nothing can wake the watcher without invalidating a build, or the reverse.
+The watched set is the same one the cache is keyed on, so nothing can wake the watcher
+without invalidating a build, or the reverse. See [Inputs](inputs.md).
 
-The manifest is re-read each cycle, so editing it takes effect without a restart —
-including an edit that breaks it, which is reported and then waited on.
+The manifest is re-read each cycle, so editing it takes effect without a restart. That
+includes an edit that breaks it, which is reported and then waited on.
 
 ## `init`
 
@@ -115,7 +115,7 @@ next     pcmp plan
 ```
 
 The entry point is detected from `src/init.luau`, `src/main.luau`, `init.luau` or
-`main.luau`; pass `--entry` otherwise. It refuses to overwrite an existing manifest, so
+`main.luau`. Pass `--entry` otherwise. It refuses to overwrite an existing manifest, so
 it is safe to run twice.
 
 ## `explain <TASK>`
@@ -131,7 +131,7 @@ pcmp schema                 # JSON Schema
 pcmp schema --format luau   # Luau type definitions
 ```
 
-Needs no project — run it anywhere. See [Install](install.md#editor-completion).
+Needs no project, so run it anywhere. See [Install](install.md#editor-completion).
 
 ## Exit codes
 
@@ -144,7 +144,7 @@ Needs no project — run it anywhere. See [Install](install.md#editor-completion
 
 ## Caching
 
-Build state lives in `.pcmp/` beside the manifest — add it to `.gitignore`, or move it
+Build state lives in `.pcmp/` beside the manifest. Add it to `.gitignore`, or move it
 with `--cache-dir`.
 
 A task is skipped when its configuration, every input, and the darklua version are all

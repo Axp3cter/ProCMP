@@ -28,12 +28,12 @@ pub enum Outcome {
         /// Short cache key the artifact was produced under.
         digest: String,
     },
-    /// Inputs unchanged; the existing artifact was kept.
+    /// Inputs unchanged, so the existing artifact was kept.
     Cached {
         /// Short cache key that matched.
         digest: String,
     },
-    /// Not produced. The reason is reported; other tasks still run.
+    /// Not produced. The reason is reported and other tasks still run.
     Failed {
         /// Why, rendered for the user.
         reason: String,
@@ -82,7 +82,7 @@ impl Report {
 
 /// The set of files a build reads, derived from the plan rather than guessed.
 ///
-/// Every file under every task's `sources` counts, whatever its extension — a content
+/// Every file under every task's `sources` counts, whatever its extension. A content
 /// loader can make a `.json` or a `.png` a build input, and an extension allowlist
 /// would serve a stale artifact after one changed. What is excluded is only what is
 /// provably not an input: the cache, version control, and the artifacts themselves.
@@ -169,8 +169,8 @@ impl Scope {
 
     /// Hashes every input, sorted, so filesystems that enumerate differently agree.
     ///
-    /// A root that does not exist contributes nothing rather than failing; a missing
-    /// entry point is reported per task, with its path.
+    /// A root that does not exist contributes nothing rather than failing. A missing
+    /// entry point is reported per task, with its path
     pub fn fingerprint(&self) -> Result<Digest> {
         let mut entries: BTreeMap<String, Digest> = BTreeMap::new();
 
@@ -310,13 +310,14 @@ impl Engine {
             })
             .collect();
 
-        // The pool finishes in any order; this is printed, so sort it back.
+        // The pool finishes in any order, and this is printed, so sort it back.
         tasks.sort_by(|a, b| a.task.cmp(&b.task));
         Ok(Report { tasks })
     }
 
-    /// Configuration, sources, and the darklua version — the last because the same
-    /// manifest can legitimately produce different bytes against a different darklua.
+    /// Configuration, sources, and the darklua version. The last of those matters
+    /// because the same manifest can legitimately produce different bytes against a
+    /// different darklua.
     fn key(&self, task: &Task, sources: Digest) -> Digest {
         let mut h = Hasher::new();
         h.field("config", task.digest().bytes())
@@ -340,7 +341,7 @@ impl Engine {
             });
         }
 
-        // A file output needs its parent; a directory output darklua creates itself.
+        // A file output needs its parent. A directory output darklua creates itself.
         if task.entry.is_file()
             && let Some(parent) = task.output.parent()
         {
@@ -432,7 +433,7 @@ impl Engine {
             return false;
         };
         // A missing or unreadable stamp reads as stale. A needless rebuild costs
-        // seconds; a wrong cache hit costs correctness.
+        // seconds, a wrong cache hit costs correctness.
         matches!(std::fs::read_to_string(path.as_std()), Ok(v) if v.trim() == key.hex())
     }
 

@@ -1,7 +1,7 @@
 //! Rebuilding on change.
 //!
 //! The manifest is re-read on every cycle, so editing it takes effect without a
-//! restart — including a change that makes it invalid, which is reported and then
+//! restart. That includes a change that makes it invalid, which is reported and then
 //! waited on rather than being fatal.
 
 use std::sync::mpsc;

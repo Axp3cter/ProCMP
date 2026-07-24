@@ -5,9 +5,8 @@ description: darklua's configuration, passed through untouched.
 # darklua
 
 A profile's `darklua` block is darklua's own configuration format. ProCMP does not
-model it, rename it, restrict it or reorder it — it deserialises the block with
-darklua's own deserialiser, so the accepted set is exactly what the linked version
-supports.
+model it, rename it, restrict it or reorder it. The block is deserialised by darklua
+itself, so the accepted set is exactly what the linked version supports.
 
 {% code title="pcmp.luau" %}
 ```lua
@@ -48,7 +47,7 @@ $ pcmp build
             unknown field `nonsense`
           {
             "nonsense": true,
-            ...
+            "rules": [
 ```
 
 ## Rules
@@ -58,7 +57,7 @@ Three ways to say it, and they mean three different things:
 <table><thead><tr><th width="200"></th><th></th></tr></thead><tbody>
 <tr><td><code>rules</code> omitted</td><td>darklua applies its own default rules.</td></tr>
 <tr><td><code>rules = {}</code></td><td>No rules. Bundle and generate, transform nothing.</td></tr>
-<tr><td><code>rules = { ... }</code></td><td>Exactly these, in this order.</td></tr>
+<tr><td><code>rules = { a, b, c }</code></td><td>Exactly these, in this order.</td></tr>
 </tbody></table>
 
 ```
@@ -141,7 +140,7 @@ ProCMP after darklua finishes, so nothing downstream can remove them.
 header = {
 	"--!native",
 	"--!optimize 2",
-	"-- {name} {version} — generated, do not edit",
+	"-- {name} {version}, generated, do not edit",
 },
 ```
 {% endcode %}
@@ -150,7 +149,7 @@ header = {
 ```lua
 --!native
 --!optimize 2
--- app v0.0.0-dev — generated, do not edit
+-- app v0.0.0-dev, generated, do not edit
 local a={}a.size=16 return a
 ```
 {% endcode %}

@@ -10,26 +10,21 @@
 
 ---
 
-ProCMP turns one Luau source tree into many artifacts — a minified release, a readable
-debug build, a Roblox variant, a Lune variant — from a single manifest. It links
-[darklua](https://darklua.com) in as a library, so there is no `darklua` binary to
-install, no `PATH` to get wrong, and no version drift between what you pinned and what
-is on the machine.
+One source tree, many artifacts. A minified release, a readable debug build, a Roblox
+variant, a Lune variant, all from one manifest.
 
-The same inputs always produce the same bytes. `pcmp verify` proves it.
+[darklua](https://darklua.com) is linked in as a library, so `pcmp` is a single static
+binary with nothing to install alongside it and no version to keep in sync.
 
 ## Install
-
-Download a binary from [releases](https://github.com/Proton-Utilities/ProCMP/releases),
-or build from source:
 
 ```sh
 cargo install --git https://github.com/Proton-Utilities/ProCMP
 ```
 
-## Use
+Or download a binary from [releases](https://github.com/Proton-Utilities/ProCMP/releases).
 
-A manifest, `pcmp.luau`:
+## Manifest
 
 ```luau
 return {
@@ -43,18 +38,13 @@ return {
 			abstract = true,
 			entry    = "src/init.luau",
 			output   = "dist/{profile}/{name}.luau",
-			darklua  = {
-				bundle = { require_mode = "luau" },
-			},
+			darklua  = { bundle = { require_mode = "luau" } },
 		},
 
 		debug = {
 			extends = "base",
 			define  = { DEBUG = true },
-			darklua = {
-				generator = "readable",
-				rules     = { "compute_expression" },
-			},
+			darklua = { generator = "readable", rules = { "compute_expression" } },
 		},
 
 		release = {
@@ -75,16 +65,17 @@ return {
 }
 ```
 
-Then:
-
 ```sh
 pcmp plan     # what would be built
 pcmp check    # lint the manifest and the plan
 pcmp build    # build it
+pcmp watch    # rebuild on every change
 pcmp verify   # prove the output is reproducible
 ```
 
-`define` entries become real constants. In a release build, this:
+JSON, JSONC, JSON5 and TOML manifests resolve to the same plan.
+
+## Defines are removed, not disabled
 
 ```luau
 if _G.DEBUG then
@@ -92,34 +83,29 @@ if _G.DEBUG then
 end
 ```
 
-is not merely false — it is **gone from the artifact**, along with the branch, because
-the value is injected as an AST node and then folded away.
+In a release build that is not `if false then`. The value is injected as an AST node, so
+the condition folds and the branch is **gone from the artifact**.
 
-## Why
+## Design
 
-**darklua is linked in**, not shelled out to, so `pcmp` is one static binary with no
-external version to drift.
+**The `darklua` block is darklua's config, verbatim.** No rule names of our own, no
+presets, no reordering. Nothing the linked darklua supports is out of reach, and
+`pcmp explain` prints the exact `.darklua.json` a task compiles to.
 
-**The `darklua` block is darklua's config, verbatim.** ProCMP adds no rule names, no
-presets and no reordering — nothing the linked darklua supports is unreachable, and
-`pcmp explain` prints the exact `.darklua.json` a task compiles down to.
-
-**Manifests are Luau, JSON, JSONC, JSON5 or TOML**, all resolving to the same plan. The
-Luau front end is a real interpreter with every entropy source revoked, so config can
-compute without going nondeterministic.
-
-**Inputs are derived, not guessed.** The hashed set comes from the plan — every file
+**Inputs are derived, not guessed.** The hashed set comes from the plan: every file
 under your roots, minus your outputs and the cache. No extension allowlist, so a `.json`
-asset behind a content loader invalidates the build it belongs to.
+asset behind a content loader invalidates the build that reads it.
 
-**Findings accumulate.** A manifest with four mistakes reports four, each with a stable
-code and a fix.
+**Findings accumulate.** Four mistakes report four, each with a stable code and a fix.
+
+**Reproducible by construction.** `pcmp verify` builds twice and byte-compares, so
+nondeterminism fails CI instead of reaching a release.
 
 ## Documentation
 
-**[procmp.dev](https://github.com/Proton-Utilities/ProCMP/tree/main/docs)** — installation,
-concepts, manifest reference, CLI reference, and the full diagnostic catalogue.
+[Installation, concepts, manifest reference, CLI reference, and the full diagnostic
+catalogue](https://github.com/Proton-Utilities/ProCMP/tree/main/docs).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

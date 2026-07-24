@@ -44,7 +44,7 @@ pub enum Error {
     )]
     Shape(String, String),
 
-    #[error("`{0}` must end with `return {{ ... }}`, but returned {1}")]
+    #[error("`{0}` must return a table, but returned {1}")]
     NotATable(String, String),
 
     #[error("`{0}` failed while evaluating\n  {1}")]

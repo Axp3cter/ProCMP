@@ -14,7 +14,7 @@ warn   unused-profile: abstract profile `old` is never extended or used as a mat
 1 error(s), 1 warning(s)
 ```
 
-Codes are stable names. Findings accumulate — four mistakes report four in one run.
+Codes are stable names. Findings accumulate, so four mistakes report four in one run.
 `--strict` makes warnings fail too.
 
 ## Resolution
@@ -39,7 +39,7 @@ no-tasks              no profiles and no matrix
 
 `bad-define` covers both halves of "this define cannot become a literal".
 `inject_global_value` substitutes by name, so a key such as `my-flag` or `end` matches
-nothing; infinity and NaN have no literal form. A var and a matrix axis each contribute
+nothing. Infinity and NaN have no literal form. A var and a matrix axis each contribute
 a `PCMP_<NAME>` constant, so their names are held to the same rule.
 
 `darklua-loaders` exists because only one of the two can win, and picking silently would
@@ -55,7 +55,7 @@ fold-before-inject    compute_expression scheduled before inject_global_value
 branch-before-fold    remove_unused_if_branch scheduled before compute_expression
 ```
 
-The order is yours; these report rather than rewrite, because a silently reordered
+The order is yours. These report rather than rewrite, because a silently reordered
 pipeline would make `pcmp explain` a lie. See [darklua](darklua.md).
 
 ## Hygiene
@@ -71,7 +71,7 @@ identical-profiles    two profiles declared identically
 
 Reported on stderr: two tasks claiming one output path, a missing entry point, a
 manifest that does not parse, an `ignore` entry that is not a valid glob, a configuration
-darklua rejected — which carries the JSON that was emitted — and a task filter that
+darklua rejected, which carries the JSON that was emitted, and a task filter that
 matched nothing.
 
 ## Exit codes

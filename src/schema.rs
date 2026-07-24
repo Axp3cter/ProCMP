@@ -90,8 +90,8 @@ fn type_of(node: &Value) -> String {
     }
 
     match node.get("type") {
-        // `["array", "null"]` — an optional *anything*, not just an optional primitive.
-        // This is the shape `Option<Vec<T>>` and `Option<Struct>` produce.
+        // `["array", "null"]` is an optional *anything*, not just an optional
+        // primitive. This is the shape `Option<Vec<T>>` and `Option<Struct>` produce.
         Some(Value::Array(kinds)) => {
             let nullable = kinds.iter().any(|k| k == "null");
             let base = kinds

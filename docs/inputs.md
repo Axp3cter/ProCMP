@@ -31,7 +31,7 @@ There is no extension allowlist. A content [loader](manifest.md#loaders) can mak
 </tbody></table>
 
 Nothing else is assumed. `dist`, `build`, `node_modules` and `target` are not special
-names — if one of them is where your `output` goes it is excluded because it is your
+names. If one of them is where your `output` goes it is excluded because it is your
 output, and if it is where your source lives it is hashed because it is your source.
 
 ## Reaching outside the project
@@ -54,8 +54,8 @@ ignore = { "**/Packages/**", "**/*.rbxm" },
 ```
 
 [wax glob syntax](https://github.com/olson-sean-k/wax#patterns), matched against paths
-relative to each root — the same dialect darklua uses for `apply_to_files`, `skip_files`
-and loader patterns.
+relative to each root. This is the same dialect darklua uses for `apply_to_files`,
+`skip_files` and loader patterns.
 
 This is a speed control, not a correctness one. Ignoring a directory the build actually
 reads means edits there will not rebuild.

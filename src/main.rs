@@ -38,7 +38,7 @@ struct Cli {
 
     /// Set a constant, as `KEY=VALUE`. Repeatable. Beats the manifest.
     ///
-    /// `true`, `false` and numbers are read as such; anything else stays a string.
+    /// `true`, `false` and numbers are read as such. Anything else stays a string.
     #[arg(long = "define", short = 'D', global = true, value_name = "KEY=VALUE")]
     define: Vec<String>,
 
@@ -253,7 +253,7 @@ fn run(cli: &Cli) -> Result<ExitCode> {
         }
 
         // Watching re-reads the manifest each cycle, so a manifest edit takes effect
-        // without a restart — including one that breaks it, which is reported and
+        // without a restart. That includes one that breaks it, which is reported and
         // waited on rather than ending the session.
         Command::Watch { tasks } => {
             let scope = engine::Scope::of(&select(&graph, tasks)?, &cache)?;
@@ -339,9 +339,9 @@ fn fingerprints(graph: &Graph) -> Result<Vec<(&str, String)>> {
 /// Selects tasks by identifier or profile name, with `*` standing for any run of
 /// characters.
 ///
-/// Only `*` — a matrix identifier contains `[`, `]` and `=`, which every glob dialect
-/// reads as syntax, so `pcmp build 'dist[target=roblox]'` would stop meaning what it
-/// says. `*target=roblox*` selects across a matrix instead.
+/// Only `*`, because a matrix identifier contains `[`, `]` and `=`, which every glob
+/// dialect reads as syntax. `pcmp build 'dist[target=roblox]'` would stop meaning what
+/// it says. `*target=roblox*` selects across a matrix instead.
 ///
 /// An empty selection is an error rather than a no-op, so a mistyped name in CI cannot
 /// pass as a successful build.
@@ -428,11 +428,7 @@ fn print_plan(graph: &Graph, root: &AbsPath, json: bool) {
         .map(|t| t.id.chars().count())
         .max()
         .unwrap_or(0);
-    outln!(
-        "{} task(s) — plan {}\n",
-        graph.len(),
-        graph.digest().short()
-    );
+    outln!("{} task(s), plan {}\n", graph.len(), graph.digest().short());
 
     for task in &graph.tasks {
         outln!(
@@ -576,7 +572,7 @@ fn print_verify(differing: &[&str], total: usize, json: bool) {
         return;
     }
 
-    outln!("NOT reproducible — {} of {total} differ:", differing.len());
+    outln!("NOT reproducible: {} of {total} differ", differing.len());
     for id in differing {
         outln!("  {id}");
     }

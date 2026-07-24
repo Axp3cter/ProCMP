@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "procmp"
-version = "4.0.0-alpha.1"
+version = "4.0.0"
 dependencies = [
  "blake3",
  "camino",

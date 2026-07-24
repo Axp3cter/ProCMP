@@ -1,7 +1,7 @@
 //! Resolution: [`Manifest`] in, [`Graph`] out.
 //!
-//! Pure — no filesystem, no network, no clock — so `pcmp plan` is exactly what a build
-//! would do rather than an approximation. Findings accumulate rather than
+//! Pure: no filesystem, no network, no clock. `pcmp plan` is therefore exactly what a
+//! build would do rather than an approximation. Findings accumulate rather than
 //! short-circuit, so a manifest with four mistakes reports all four in one run.
 
 use indexmap::IndexMap;
@@ -70,7 +70,7 @@ pub struct Task {
     pub ignore: Vec<String>,
     /// Lines prepended to each artifact after darklua runs, tokens expanded.
     pub header: Vec<String>,
-    /// Matrix coordinates that produced this task; empty for a plain profile.
+    /// Matrix coordinates that produced this task. Empty for a plain profile.
     pub axes: IndexMap<String, String>,
 }
 
@@ -141,7 +141,7 @@ impl Graph {
     }
 }
 
-/// Warnings accompany a usable graph; any denial suppresses it.
+/// Warnings accompany a usable graph. Any denial suppresses it.
 #[derive(Debug)]
 pub struct Resolution {
     /// The plan, or [`None`] when a finding denied it.
@@ -254,7 +254,7 @@ fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option<Pro
                     CYCLIC_EXTENDS,
                     format!("profile `{name}` has a cyclic `extends` chain"),
                 )
-                .help(format!("the cycle is: {}", seen.join(" → "))),
+                .help(format!("the cycle is: {}", seen.join(", "))),
             );
             return None;
         }
@@ -262,7 +262,7 @@ fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option<Pro
         let Some(profile) = manifest.profiles.get(cursor) else {
             diags.push(
                 Diag::deny(UNKNOWN_BASE, format!("profile `{cursor}` does not exist")).help(
-                    format!("referenced by `{name}`; known: {}", known(manifest)),
+                    format!("referenced by `{name}`, known: {}", known(manifest)),
                 ),
             );
             return None;
@@ -283,7 +283,7 @@ fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option<Pro
         ..Profile::default()
     };
 
-    // `chain` runs child → ancestor; fold from the ancestor end so nearer wins.
+    // `chain` runs child to ancestor, so fold from the ancestor end and nearer wins.
     for profile in chain.iter().rev() {
         merge(&mut merged, profile);
     }
@@ -383,9 +383,9 @@ fn task(
     let Some(template) = profile.output.as_deref() else {
         diags.push(
             Diag::deny(MISSING_OUTPUT, format!("task `{id}` has no `output`")).help(
-                "set `output`, e.g. \"dist/{profile}/app.luau\" — ProCMP does not invent \
-                 one, because an artifact written somewhere you did not ask for is an \
-                 artifact you will not find",
+                "set `output`, e.g. \"dist/{profile}/app.luau\"\n  \
+                 ProCMP does not invent one, because an artifact written somewhere you \
+                 did not ask for is an artifact you will not find",
             ),
         );
         return None;
@@ -461,7 +461,7 @@ fn task(
                     format!("define `{identifier}` in task `{id}` is not a Luau identifier"),
                 )
                 .help(
-                    "a define key must be writable as a global — letters, digits and \
+                    "a define key must be writable as a global: letters, digits and \
                      underscores, not starting with a digit, and not a keyword",
                 ),
             );
@@ -474,7 +474,9 @@ fn task(
                     BAD_DEFINE,
                     format!("define `{identifier}` in task `{id}` is not a finite number"),
                 )
-                .help("infinity and NaN have no literal form; use a string if that was the intent"),
+                .help(
+                    "infinity and NaN have no literal form, so use a string if that was the intent",
+                ),
             );
             return None;
         }
@@ -505,7 +507,7 @@ fn task(
                 DARKLUA_LOADERS,
                 format!("task `{id}` declares loaders in both `loaders` and `darklua.loaders`"),
             )
-            .help("keep the `loaders` list; only it can express which pattern wins"),
+            .help("keep the `loaders` list, because only it can express which pattern wins"),
         );
         return None;
     }
@@ -683,7 +685,7 @@ fn is_identifier(name: &str) -> bool {
 
 /// Expands `{token}` references, treating `{{` and `}}` as literal braces.
 ///
-/// An unknown, empty or unclosed token is an error rather than a placeholder — a
+/// An unknown, empty or unclosed token is an error rather than a placeholder. A
 /// template that quietly resolves to nothing names an artifact after nothing.
 fn expand_tokens(template: &str, tokens: &IndexMap<String, String>) -> Result<String> {
     let bytes = template.as_bytes();
