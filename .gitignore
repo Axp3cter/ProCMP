@@ -1,3 +1,8 @@
-generated/
+# Build output
+/target/
+
+# ProCMP's own cache, written next to a project's manifest
+.pcmp/
+
+# Local environment
 .env
-pipeline/.pcmp.local.json

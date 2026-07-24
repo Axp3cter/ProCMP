@@ -1,0 +1,5 @@
+# Pinned so `cargo fmt` and `clippy` give every contributor and CI the same answer.
+# `rustup` reads this automatically, which is why CI installs no toolchain of its own.
+[toolchain]
+channel    = "1.90"
+components = ["rustfmt", "clippy"]

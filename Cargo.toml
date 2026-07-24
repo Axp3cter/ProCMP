@@ -1,0 +1,42 @@
+[package]
+name         = "procmp"
+description  = "Multi-target build composition for Luau projects."
+version      = "4.0.0-alpha.1"
+edition      = "2024"
+rust-version = "1.90"
+license      = "MIT"
+build        = "build.rs"
+
+[lib]
+name = "procmp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "pcmp"
+path = "src/main.rs"
+
+[dependencies]
+blake3                = "1"
+camino                = { version = "1", features = ["serde1"] }
+clap                  = { version = "4", features = ["derive", "wrap_help"] }
+darklua               = "0.19"
+indexmap              = { version = "2", features = ["serde"] }
+json5                 = "1"
+mlua                  = { version = "0.11", features = ["luau", "vendored", "serialize"] }
+notify                = "8"
+notify-debouncer-full = "0.7"
+rayon                 = "1"
+schemars              = { version = "1", features = ["indexmap2"] }
+serde                 = { version = "1", features = ["derive"] }
+serde_json            = { version = "1", features = ["preserve_order"] }
+thiserror             = "2"
+toml                  = "1"
+wax                   = "0.7"
+
+[profile.release]
+lto           = "thin"
+strip         = true
+codegen-units = 1
+
+# `panic = "abort"` is deliberately absent: mlua propagates a Lua error by unwinding
+# across the C boundary, and aborting turns an ordinary manifest mistake into a crash.
