@@ -1,29 +1,32 @@
 //! Editor-facing schema emission.
 //!
-//! Both outputs are generated from the [`Manifest`] type the parser uses, so neither
-//! can describe something ProCMP would reject. Adding a manifest field is one edit.
+//! Both outputs come from the [`Manifest`] type the parser uses, so neither can
+//! describe something ProCMP would reject.
 
 use serde_json::Value;
 
 use crate::manifest::Manifest;
 
-/// Emits the manifest JSON Schema, for editors and CI validation.
+const KEYWORDS: &[&str] = &[
+    "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local",
+    "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
+];
+
 pub fn json() -> String {
-    serde_json::to_string_pretty(&schema()).expect("a generated schema is always encodable")
+    serde_json::to_string_pretty(&schema()).expect("a generated schema is encodable")
 }
 
-/// Emits Luau type definitions for `pcmp.luau`, giving `luau-lsp` completion and type
-/// errors inside a manifest.
+/// Luau type definitions, giving `luau-lsp` completion inside a manifest.
 pub fn luau() -> String {
     let schema = schema();
     let mut out = String::from(
         "--!strict\n\
-         --- Type definitions for ProCMP manifests. Emitted by `pcmp schema --luau`.\n\n",
+         --- Type definitions for ProCMP manifests. Emitted by `pcmp schema --format luau`.\n\n",
     );
 
     if let Some(defs) = schema.get("$defs").and_then(Value::as_object) {
-        // Sorted rather than left in schemars' insertion order, so regenerating after
-        // an unrelated field moves does not rewrite the whole file.
+        // Sorted, so regenerating after an unrelated field moves does not rewrite the
+        // whole file.
         let mut names: Vec<&String> = defs.keys().collect();
         names.sort();
 
@@ -34,8 +37,8 @@ pub fn luau() -> String {
     }
     out.push_str(&format!("export type Manifest = {}\n\n", type_of(&schema)));
 
-    // Hand-written on purpose: this describes the globals `crate::load` installs, not
-    // the manifest shape, so there is nothing to derive it from.
+    // Hand-written: this describes the globals the Luau front end installs, not the
+    // manifest shape.
     out.push_str(
         "--- The globals available inside a manifest.\n\
          export type Api = {\n\
@@ -52,19 +55,13 @@ pub fn luau() -> String {
 }
 
 fn schema() -> Value {
-    serde_json::to_value(schemars::schema_for!(Manifest))
-        .expect("a generated schema is always encodable")
+    serde_json::to_value(schemars::schema_for!(Manifest)).expect("a generated schema is encodable")
 }
 
-/// Renders one schema node as a Luau type.
-///
-/// Handles exactly the shapes `schemars` produces for [`Manifest`]: references,
-/// nullable unions, string enums, arrays, string-keyed maps and primitives. Anything
-/// else becomes `any` rather than a plausible-looking guess.
+/// Handles exactly the shapes `schemars` produces for [`Manifest`]. Anything else
+/// becomes `any` rather than a plausible-looking guess.
 fn type_of(node: &Value) -> String {
     if let Some(reference) = node.get("$ref").and_then(Value::as_str) {
-        // A reference with nothing after its last separator would name a type `` and
-        // emit `export type  = ...`, which does not parse.
         return match reference.rsplit('/').next() {
             Some(name) if !name.is_empty() => name.to_owned(),
             _ => "any".to_owned(),
@@ -83,7 +80,7 @@ fn type_of(node: &Value) -> String {
         }
     }
 
-    // `anyOf` is either an untagged union or an optional wrapping one branch.
+    // `anyOf` is an untagged union, or an optional wrapping one branch.
     if let Some(branches) = node.get("anyOf").and_then(Value::as_array) {
         let nullable = branches.iter().any(is_null);
         let rendered: Vec<String> = branches
@@ -101,8 +98,8 @@ fn type_of(node: &Value) -> String {
     }
 
     match node.get("type") {
-        // `["array", "null"]` is an optional *anything*, not just an optional
-        // primitive. This is the shape `Option<Vec<T>>` and `Option<Struct>` produce.
+        // `["array", "null"]` is an optional anything, which is what `Option<Vec<T>>`
+        // and `Option<Struct>` produce.
         Some(Value::Array(kinds)) => {
             let nullable = kinds.iter().any(|k| k == "null");
             let base = kinds
@@ -112,15 +109,12 @@ fn type_of(node: &Value) -> String {
                 .map_or_else(|| "any".to_owned(), |kind| named(kind, node));
             if nullable { optional(&base) } else { base }
         }
-
         Some(Value::String(kind)) => named(kind, node),
-
         _ => "any".to_owned(),
     }
 }
 
-/// Renders one type name. `array` and `object` need the node too, because their shape
-/// lives beside the name rather than inside it.
+/// `array` and `object` need the node too, because their shape lives beside the name.
 fn named(kind: &str, node: &Value) -> String {
     match kind {
         "array" => format!("{{ {} }}", node.get("items").map_or("any".into(), type_of)),
@@ -129,7 +123,6 @@ fn named(kind: &str, node: &Value) -> String {
     }
 }
 
-/// Renders an object as a record of known fields, or as a map when the keys are open.
 fn object_of(node: &Value) -> String {
     if let Some(values) = node.get("additionalProperties")
         && values.is_object()
@@ -159,16 +152,7 @@ fn object_of(node: &Value) -> String {
     format!("{{\n{fields}}}")
 }
 
-/// Luau words that cannot appear as a bare field name.
-const KEYWORDS: &[&str] = &[
-    "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local",
-    "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
-];
-
-/// Quotes a key that is not a bare Luau identifier.
-///
-/// A keyword is quoted too. A manifest field named `end` is legal JSON and legal Rust,
-/// and emitting it bare would produce definitions that do not parse.
+/// A keyword is quoted too: a field named `end` is legal JSON but not a bare Luau name.
 fn key(name: &str) -> String {
     let bare = !name.is_empty()
         && !name.starts_with(|c: char| c.is_ascii_digit())
@@ -182,7 +166,7 @@ fn key(name: &str) -> String {
     }
 }
 
-/// Makes a type optional without producing `T??` or an ambiguous `A | B?`.
+/// Without producing `T??` or an ambiguous `A | B?`.
 fn optional(rendered: &str) -> String {
     if rendered.ends_with('?') {
         rendered.to_owned()

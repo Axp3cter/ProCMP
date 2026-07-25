@@ -25,13 +25,6 @@ pcmp = "Proton-Utilities/ProCMP@4.0.0"
 aftman add Proton-Utilities/ProCMP pcmp
 ```
 
-{% code title="aftman.toml" %}
-```toml
-[tools]
-pcmp = "Proton-Utilities/ProCMP@4.0.0"
-```
-{% endcode %}
-
 ## Cargo
 
 ```sh
@@ -44,8 +37,8 @@ Luau interpreter are compiled in.
 ## Binary
 
 Download the archive for your platform from
-[releases](https://github.com/Proton-Utilities/ProCMP/releases) and put `pcmp` on your
-`PATH`. Each release ships `SHA256SUMS`:
+[releases](https://github.com/Proton-Utilities/ProCMP/releases) and put `pcmp` on your `PATH`.
+Each release ships `SHA256SUMS`:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
@@ -53,12 +46,12 @@ sha256sum -c SHA256SUMS --ignore-missing
 
 ## Editor completion
 
-`pcmp schema` emits definitions from the types the parser uses, so they cannot describe
-something ProCMP will reject. Both files are safe to commit.
+`pcmp init` writes the schema beside the manifest, so a fresh project already has this.
+Regenerate after upgrading:
 
 ```sh
-pcmp schema --format luau > pcmp.d.luau   # Luau manifests
-pcmp schema > pcmp.schema.json            # JSON and TOML manifests
+pcmp schema > pcmp.schema.json            # JSON, JSONC, JSON5 and TOML
+pcmp schema --format luau > pcmp.d.luau   # Luau
 ```
 
 {% code title=".vscode/settings.json" %}
@@ -66,15 +59,3 @@ pcmp schema > pcmp.schema.json            # JSON and TOML manifests
 { "luau-lsp.types.definitionFiles": ["pcmp.d.luau"] }
 ```
 {% endcode %}
-
-{% code title="pcmp.json5" %}
-```json5
-{
-  $schema: "./pcmp.schema.json",
-  vars: { name: "app" },
-}
-```
-{% endcode %}
-
-`pcmp init` writes both the manifest and its schema, so a fresh project already has
-this. `pcmp init --format luau` writes `pcmp.luau` and `pcmp.d.luau` instead.

@@ -18,9 +18,7 @@ jobs:
     name: Format and lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      # No toolchain action: `rust-toolchain.toml` pins the version, and rustup
-      # installs it on first use.
+      - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets --all-features
@@ -33,7 +31,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release
 
@@ -41,59 +39,57 @@ jobs:
     name: Reproducible output
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release
 
-      # A build tool whose output is not byte-stable has no way to prove it did not
-      # break something. `pcmp verify` builds twice and compares, so this job fails on
-      # any nondeterminism the code introduces.
       - name: Build a fixture twice and compare
         run: |
           mkdir -p /tmp/fixture/src
           cat > /tmp/fixture/src/init.luau <<'LUAU'
           --!strict
-          local VERSION: string = _G.PCMP_VERSION
-          if _G.DEBUG then print("stripped") end
+          local VERSION: string = PCMP_VERSION
+          if DEBUG then print("stripped") end
           return { version = VERSION }
           LUAU
-          cat > /tmp/fixture/pcmp.luau <<'LUAU'
-          return {
-            vars = { name = "fixture", version = pcmp.env("VERSION") },
-            profiles = {
-              release = {
-                entry = "src/init.luau",
-                output = "dist/{name}.luau",
-                define = { DEBUG = false },
-                darklua = {
-                  generator = "dense",
-                  rules = {
+          cat > /tmp/fixture/pcmp.json5 <<'JSON5'
+          {
+            vars: { name: "fixture" },
+            profiles: {
+              release: {
+                entry: "src/init.luau",
+                output: "dist/{name}.luau",
+                define: { DEBUG: false },
+                darklua: {
+                  generator: "dense",
+                  rules: [
                     "compute_expression",
                     "remove_unused_if_branch",
                     "remove_types",
                     "remove_comments",
                     "rename_variables",
-                  },
+                  ],
                 },
               },
             },
           }
-          LUAU
+          JSON5
           cd /tmp/fixture
           pcmp="$GITHUB_WORKSPACE/target/release/pcmp"
-          "$pcmp" check --strict --env VERSION=v1.0.0
-          "$pcmp" verify --env VERSION=v1.0.0
+          "$pcmp" check --strict --var version=v1.0.0
+          "$pcmp" verify --var version=v1.0.0
 
   audit:
     name: Advisories
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      # A prebuilt binary, not `cargo install`. Every cargo call in this directory runs
-      # under the pinned toolchain, and `rustsec/audit-check` installs cargo-audit
-      # unlocked — so a fresh resolution can pull a transitive dependency whose MSRV is
-      # newer than the pin and fail the job for a reason unrelated to this crate.
-      # Downloading the tool sidesteps the pin entirely and keeps the job seconds long.
-      - uses: taiki-e/install-action@cargo-audit
+      # A prebuilt binary rather than `cargo install`. Building cargo-audit from source
+      # resolves its dependencies to their latest versions, whose MSRV moves ahead of
+      # the toolchain this repository pins, and the build fails on a dependency nobody
+      # here chose.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
       - run: cargo audit

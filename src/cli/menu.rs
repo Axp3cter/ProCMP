@@ -1,16 +1,13 @@
-//! An opt-in menu for choosing tasks.
+//! The `--pick` menu.
 //!
-//! Reachable only through `--pick`, so a script or a CI job that never passes the flag
-//! behaves exactly as it did before. A build that blocks on a prompt cannot run
-//! unattended, and one that asks for a version at build time produces different bytes
-//! from the same commit, which is what makes this a menu rather than a wizard: it
-//! chooses among tasks the manifest already declares and changes nothing else.
+//! Reachable only through the flag, so a script that never passes it behaves as before.
+//! A build that blocks on a prompt cannot run unattended, and one that asks for a
+//! version at build time produces different bytes from the same commit, which is what
+//! makes this a menu rather than a wizard: it chooses among tasks the manifest already
+//! declares and changes nothing else.
 //!
-//! Every action is a row. There is no legend to read and no key to know beyond the
-//! arrows and enter, so selecting all is something you can see rather than something
-//! you have to be told.
-//!
-//! Drawn on stderr, so `pcmp build --pick --json | jq` still works.
+//! Every action is a row, so there is no legend to read. Drawn on stderr, so
+//! `pcmp build --pick --json | jq` still works.
 
 use std::io::{self, IsTerminal, Write};
 
@@ -24,19 +21,14 @@ use crossterm::{
 use procmp::error::{Error, Result};
 use procmp::{AbsPath, Graph};
 
-/// Chosen task indices, or [`None`] when the menu was dismissed.
-pub type Picked = Option<Vec<usize>>;
-
-/// How many tasks a menu may return.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// `build` and `watch`: tick any number, then continue.
+    /// Tick any number, then continue.
     Many,
-    /// `explain`: choosing a task ends the menu.
+    /// Choosing a task ends the menu.
     One,
 }
 
-/// A row that does something when chosen, as opposed to a task that toggles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Action {
     SelectAll,
@@ -45,7 +37,6 @@ enum Action {
     Cancel,
 }
 
-/// One line of the menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Row {
     Task(usize),
@@ -53,35 +44,36 @@ enum Row {
     Act(Action),
 }
 
+enum Key {
+    Up,
+    Down,
+    Choose,
+    Quit,
+}
+
 /// Restores the terminal however the menu exits, including on an error or a panic.
 struct Session;
 
 impl Session {
     fn open() -> Result<Self> {
-        terminal::enable_raw_mode().map_err(terminal_error)?;
-        io::stderr().queue(cursor::Hide).map_err(terminal_error)?;
+        terminal::enable_raw_mode().map_err(failed)?;
+        io::stderr().queue(cursor::Hide).map_err(failed)?;
         Ok(Self)
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let mut out = io::stderr();
         let _ = terminal::disable_raw_mode();
-        let _ = out
+        let _ = io::stderr()
             .queue(Clear(ClearType::FromCursorDown))
             .and_then(|out| out.queue(cursor::Show))
             .and_then(Write::flush);
     }
 }
 
-/// Presents `graph` as a menu titled `title` and returns the chosen indices.
-///
-/// # Errors
-///
-/// When either end of the terminal is redirected, because a menu with nothing to draw
-/// on and nobody to read it is a hang rather than a question.
-pub fn tasks(graph: &Graph, root: &AbsPath, title: &str, mode: Mode) -> Result<Picked> {
+/// Chosen indices, or [`None`] when dismissed.
+pub fn tasks(graph: &Graph, root: &AbsPath, title: &str, mode: Mode) -> Result<Option<Vec<usize>>> {
     if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
         return Err(Error::NotATerminal);
     }
@@ -108,9 +100,7 @@ pub fn tasks(graph: &Graph, root: &AbsPath, title: &str, mode: Mode) -> Result<P
     loop {
         draw(&mut out, title, &labels, &rows, &chosen, at, width)?;
 
-        let Some(key) = keypress()? else {
-            continue;
-        };
+        let Some(key) = keypress()? else { continue };
 
         match key {
             Key::Quit => return Ok(None),
@@ -127,8 +117,7 @@ pub fn tasks(graph: &Graph, root: &AbsPath, title: &str, mode: Mode) -> Result<P
                 Row::Act(Action::SelectAll) => chosen.fill(true),
                 Row::Act(Action::ClearAll) => chosen.fill(false),
 
-                // Confirming nothing would build nothing, which reads as a hang rather
-                // than a choice, so the row simply does not fire.
+                // Confirming nothing would build nothing, which reads as a hang.
                 Row::Act(Action::Confirm) => {
                     let picked = ticked(&chosen);
                     if !picked.is_empty() {
@@ -140,10 +129,8 @@ pub fn tasks(graph: &Graph, root: &AbsPath, title: &str, mode: Mode) -> Result<P
     }
 }
 
-/// The rows a menu of `count` tasks is built from.
-///
 /// [`Mode::One`] needs no bulk actions and no confirm, because choosing a task is the
-/// confirmation, so it gets one action rather than four.
+/// confirmation.
 fn layout(count: usize, mode: Mode) -> Vec<Row> {
     let mut rows: Vec<Row> = (0..count).map(Row::Task).collect();
     rows.push(Row::Separator);
@@ -167,13 +154,12 @@ fn ticked(chosen: &[bool]) -> Vec<usize> {
         .collect()
 }
 
-/// Moves the cursor by `delta`, wrapping and skipping the separator.
+/// Wraps, and skips the separator. Bounded by the row count: a menu always holds at
+/// least one action, so a full lap cannot run out of landing places.
 fn step(rows: &[Row], from: usize, delta: isize) -> usize {
     let len = rows.len() as isize;
     let mut at = from as isize;
 
-    // Bounded by the row count: a menu always holds at least one action, so a full lap
-    // cannot run out of landing places.
     for _ in 0..rows.len() {
         at = (at + delta).rem_euclid(len);
         if rows[at as usize] != Row::Separator {
@@ -184,16 +170,9 @@ fn step(rows: &[Row], from: usize, delta: isize) -> usize {
     at as usize
 }
 
-/// The four things a menu reacts to. Everything else is ignored rather than guessed at.
-enum Key {
-    Up,
-    Down,
-    Choose,
-    Quit,
-}
-
+/// Anything else is ignored rather than guessed at.
 fn keypress() -> Result<Option<Key>> {
-    let Event::Key(key) = event::read().map_err(terminal_error)? else {
+    let Event::Key(key) = event::read().map_err(failed)? else {
         return Ok(None);
     };
     if key.kind != KeyEventKind::Press {
@@ -225,7 +204,7 @@ fn draw(
     let count = chosen.iter().filter(|on| **on).count();
 
     out.queue(Clear(ClearType::FromCursorDown))
-        .map_err(terminal_error)?;
+        .map_err(failed)?;
     line(out, "")?;
     line(out, &format!("  {title}"))?;
     line(out, "")?;
@@ -238,37 +217,33 @@ fn draw(
                 let mark = if chosen[*task] { "[x]" } else { "[ ]" };
                 format!("{mark} {id:width$}  {output}")
             }
-            Row::Act(action) => match action {
-                Action::SelectAll => "Select all".to_owned(),
-                Action::ClearAll => "Select none".to_owned(),
-                Action::Confirm => format!("Continue with {count} selected"),
-                Action::Cancel => "Cancel".to_owned(),
-            },
+            Row::Act(Action::SelectAll) => "Select all".to_owned(),
+            Row::Act(Action::ClearAll) => "Select none".to_owned(),
+            Row::Act(Action::Confirm) => format!("Continue with {count} selected"),
+            Row::Act(Action::Cancel) => "Cancel".to_owned(),
         };
 
         let arrow = if index == at { ">" } else { " " };
         if index == at {
-            out.queue(SetAttribute(Attribute::Bold))
-                .map_err(terminal_error)?;
+            out.queue(SetAttribute(Attribute::Bold)).map_err(failed)?;
         }
         line(out, &format!("  {arrow} {text}"))?;
         if index == at {
-            out.queue(SetAttribute(Attribute::Reset))
-                .map_err(terminal_error)?;
+            out.queue(SetAttribute(Attribute::Reset)).map_err(failed)?;
         }
     }
 
-    // Back to the top so the next frame overwrites this one in place.
+    // Back to the top, so the next frame overwrites this one in place.
     out.queue(cursor::MoveToPreviousLine((rows.len() + 3) as u16))
-        .map_err(terminal_error)?;
-    out.flush().map_err(terminal_error)
+        .map_err(failed)?;
+    out.flush().map_err(failed)
 }
 
-/// Raw mode does not translate `\n`, so every line needs an explicit return.
+/// Raw mode does not translate `\n`.
 fn line(out: &mut io::Stderr, text: &str) -> Result<()> {
-    write!(out, "{text}\r\n").map_err(terminal_error)
+    write!(out, "{text}\r\n").map_err(failed)
 }
 
-fn terminal_error(error: impl std::fmt::Display) -> Error {
+fn failed(error: impl std::fmt::Display) -> Error {
     Error::Terminal(error.to_string())
 }

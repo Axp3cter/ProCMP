@@ -1,8 +1,2 @@
-# Build output
-/target/
-
-# ProCMP's own cache, written next to a project's manifest
+/target
 .pcmp/
-
-# Local environment
-.env

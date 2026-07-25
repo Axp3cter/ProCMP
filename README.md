@@ -23,15 +23,16 @@ cargo install --git https://github.com/Proton-Utilities/ProCMP
 
 ## Use
 
+```sh
+pcmp init
+```
+
 ```json5
 // pcmp.json5
 {
   $schema: "./pcmp.schema.json",
 
-  vars: {
-    name: "app",
-    version: "v0.0.0-dev",
-  },
+  vars: { name: "app", version: "v0.0.0-dev" },
 
   profiles: {
     release: {
@@ -56,11 +57,8 @@ pcmp watch    # rebuild on every change
 pcmp verify   # prove the output is reproducible
 ```
 
-`pcmp init` writes that file and its schema. Luau, JSON, JSONC and TOML manifests
-resolve to the same plan, and `pcmp init --format luau` scaffolds the Luau one.
-
-`define` values are injected as AST nodes, so `if _G.DEBUG then` folds away and the
-branch is gone from the artifact.
+`define` values are injected as AST nodes, so `if DEBUG then` folds and the branch is
+gone from the artifact. JSON, JSONC, TOML and Luau manifests resolve to the same plan.
 
 The `darklua` block is darklua's own configuration, deserialised by darklua. `pcmp
 explain` prints what a task compiles to, which is a valid `.darklua.json`.

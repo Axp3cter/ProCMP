@@ -1,44 +1,29 @@
 //! Scaffolding a new project.
 //!
-//! Writes two files and nothing else: a manifest, and the schema that makes it complete
-//! in an editor. No directories, no prompts, no `.gitignore` rewriting. Anything it
-//! cannot infer is asked for on the command line rather than guessed.
+//! Two files and nothing else. No directories, no prompts, no `.gitignore` rewriting.
 
 use crate::error::{Error, Result};
 use crate::path::AbsPath;
-use crate::{load, schema};
+use crate::{manifest, schema};
 
-/// Entry points looked for when `--entry` is not given.
 const LIKELY_ENTRIES: &[&str] = &["src/init.luau", "src/main.luau", "init.luau", "main.luau"];
 
-/// Which manifest a fresh project starts from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Format {
-    /// JSON5, paired with a JSON Schema. Comments and trailing commas are accepted, and
-    /// `$schema` gives every editor validation with no further setup.
+    /// Plain data, paired with a JSON Schema.
     Json5,
-    /// Luau, paired with type definitions. Adds `pcmp.env` for values a manifest has to
-    /// compute rather than be given.
+    /// Adds `pcmp.env`, paired with type definitions.
     Luau,
 }
 
-/// Files written by `pcmp init`.
 #[derive(Debug)]
 pub struct Created {
-    /// The manifest that was written.
     pub manifest: AbsPath,
-    /// The schema or type definitions written beside it.
     pub definitions: AbsPath,
 }
 
-/// Writes a starter manifest and its schema into `root`.
-///
-/// # Errors
-///
-/// When a manifest already exists, or no entry point was given and none could be
-/// found. Refusing rather than overwriting keeps this safe to run twice.
 pub fn run(root: &AbsPath, name: &str, entry: Option<&str>, format: Format) -> Result<Created> {
-    if let Ok(existing) = load::discover(root) {
+    if let Ok(existing) = manifest::discover(root) {
         return Err(Error::AlreadyExists(existing.relative_to(root)));
     }
 
@@ -51,37 +36,33 @@ pub fn run(root: &AbsPath, name: &str, entry: Option<&str>, format: Format) -> R
             .ok_or_else(|| Error::NoEntry(LIKELY_ENTRIES.join(", ")))?,
     };
 
-    let (manifest_name, definitions_name, body, definitions) = match format {
+    let (names, body, definitions) = match format {
         Format::Json5 => (
-            "pcmp.json5",
-            "pcmp.schema.json",
+            ("pcmp.json5", "pcmp.schema.json"),
             json5(name, &entry),
             schema::json(),
         ),
         Format::Luau => (
-            "pcmp.luau",
-            "pcmp.d.luau",
+            ("pcmp.luau", "pcmp.d.luau"),
             luau(name, &entry),
             schema::luau(),
         ),
     };
 
-    // Both paths are resolved and both files checked before either is written. Writing
-    // the manifest and then failing would leave a project that `init` refuses to
-    // scaffold again and that `pcmp plan` cannot resolve.
-    let manifest_path = free(root, manifest_name)?;
-    let definitions_path = free(root, definitions_name)?;
+    // Both paths checked before either is written: a half-scaffolded project is one
+    // `init` refuses to finish and `plan` cannot resolve.
+    let manifest = free(root, names.0)?;
+    let definitions_path = free(root, names.1)?;
 
-    write(&manifest_path, &body)?;
+    write(&manifest, &body)?;
     write(&definitions_path, &definitions)?;
 
     Ok(Created {
-        manifest: manifest_path,
+        manifest,
         definitions: definitions_path,
     })
 }
 
-/// Resolves `name` under `root`, refusing a path that already holds something.
 fn free(root: &AbsPath, name: &str) -> Result<AbsPath> {
     let path = root.join(name)?;
 
@@ -96,19 +77,14 @@ fn write(path: &AbsPath, body: &str) -> Result<()> {
     std::fs::write(path.as_std(), body).map_err(|e| Error::Write(path.to_string(), e.to_string()))
 }
 
-/// Quotes a value as a JSON string.
-///
-/// A project name comes from a directory name or the command line, so it can contain a
-/// quote or a backslash. Interpolating it raw produces a manifest that does not parse.
+/// A name can hold a quote or a backslash, and interpolating it raw would produce a
+/// manifest that does not parse.
 fn quote(value: &str) -> String {
     serde_json::Value::String(value.to_owned()).to_string()
 }
 
-/// Quotes a value as a Luau string.
-///
-/// Not [`quote`]: JSON escapes a control character as `\u0000`, which Luau reads as a
-/// `u` followed by four digits. Luau spells the same thing `\u{0}`, and anything below
-/// a space is rare enough in a project name to replace with one.
+/// Not [`quote`]: JSON writes a control character as a `\u` escape with four digits,
+/// which Luau reads as a `u` followed by digits.
 fn quote_luau(value: &str) -> String {
     let escaped: String = value
         .chars()
@@ -123,7 +99,6 @@ fn quote_luau(value: &str) -> String {
     format!("\"{escaped}\"")
 }
 
-/// A dev and a release profile, which is the shape almost every project starts from.
 fn json5(name: &str, entry: &str) -> String {
     let name = quote(name);
     let entry = quote(entry);
@@ -131,7 +106,7 @@ fn json5(name: &str, entry: &str) -> String {
         r#"{{
   $schema: "./pcmp.schema.json",
 
-  // Each becomes a {{token}} in output and header, and a PCMP_<NAME> constant.
+  // Each becomes a {{token}} and a PCMP_<NAME> constant.
   // Override per build with `pcmp build --var version=v1.2.3`.
   vars: {{
     name: {name},
@@ -178,7 +153,6 @@ fn json5(name: &str, entry: &str) -> String {
     )
 }
 
-/// The same project as [`json5`], with `pcmp.envOr` in place of a literal version.
 fn luau(name: &str, entry: &str) -> String {
     let name = quote_luau(name);
     let entry = quote_luau(entry);
@@ -195,9 +169,7 @@ return {{
 			abstract = true,
 			entry    = {entry},
 			output   = "dist/{{profile}}/{{name}}.luau",
-			darklua  = {{
-				bundle = {{ require_mode = "luau" }},
-			}},
+			darklua  = {{ bundle = {{ require_mode = "luau" }} }},
 		}},
 
 		dev = {{
