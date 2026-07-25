@@ -4,9 +4,7 @@ use indexmap::IndexMap;
 
 use crate::error::{Error, Result};
 
-/// `{{` and `}}` are literal braces. An unknown, empty or unclosed token is an error
-/// rather than a placeholder: a template that resolves to nothing names an artifact
-/// after nothing.
+/// `{{` and `}}` are literal braces. An unknown, empty or unclosed token is an error.
 pub fn expand(template: &str, tokens: &IndexMap<String, String>) -> Result<String> {
     let bytes = template.as_bytes();
     let mut out = String::with_capacity(template.len());

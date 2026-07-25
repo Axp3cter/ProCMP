@@ -1,7 +1,5 @@
-//! Editor-facing schema emission.
-//!
-//! Both outputs come from the [`Manifest`] type the parser uses, so neither can
-//! describe something ProCMP would reject.
+//! Editor-facing schema emission. Both outputs come from the [`Manifest`] type the
+//! parser uses.
 
 use serde_json::Value;
 
@@ -25,8 +23,7 @@ pub fn luau() -> String {
     );
 
     if let Some(defs) = schema.get("$defs").and_then(Value::as_object) {
-        // Sorted, so regenerating after an unrelated field moves does not rewrite the
-        // whole file.
+        // Sorted, so regeneration is stable.
         let mut names: Vec<&String> = defs.keys().collect();
         names.sort();
 
@@ -59,7 +56,7 @@ fn schema() -> Value {
 }
 
 /// Handles exactly the shapes `schemars` produces for [`Manifest`]. Anything else
-/// becomes `any` rather than a plausible-looking guess.
+/// becomes `any`.
 fn type_of(node: &Value) -> String {
     if let Some(reference) = node.get("$ref").and_then(Value::as_str) {
         return match reference.rsplit('/').next() {

@@ -10,8 +10,7 @@
 
 ---
 
-[darklua](https://darklua.com) is linked in as a library, so `pcmp` is one static binary
-with nothing to install alongside it.
+Links in [darklua](https://darklua.com) as a library.
 
 ## Install
 
@@ -57,11 +56,7 @@ pcmp watch    # rebuild on every change
 pcmp verify   # prove the output is reproducible
 ```
 
-`define` values are injected as AST nodes, so `if DEBUG then` folds and the branch is
-gone from the artifact. JSON, JSONC, TOML and Luau manifests resolve to the same plan.
-
-The `darklua` block is darklua's own configuration, deserialised by darklua. `pcmp
-explain` prints what a task compiles to, which is a valid `.darklua.json`.
+JSON, JSONC, TOML and Luau manifests resolve to the same plan.
 
 ## Documentation
 

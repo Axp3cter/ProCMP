@@ -119,8 +119,7 @@ enum Shape {
 pub fn run(cli: &Cli) -> Result<ExitCode> {
     let cwd = AbsPath::cwd()?;
 
-    // Before a manifest is looked for: one needs no project, the other exists because
-    // there is not one yet.
+    // Neither needs a manifest.
     match &cli.command {
         Command::Schema { format } => {
             outln(match format {
@@ -226,8 +225,7 @@ pub fn run(cli: &Cli) -> Result<ExitCode> {
         Command::Verify => {
             let engine = Engine::new(loaded.root.clone(), cache).cached(false);
 
-            // A failed build has no artifact to compare, and reporting a missing file
-            // would hide the failure that caused it.
+            // A failed build has no artifact to compare.
             let Some(first) = pass(&engine, &graph, cli.json)? else {
                 return Ok(ExitCode::Build);
             };
@@ -317,7 +315,7 @@ fn pass<'g>(
     fingerprints(graph).map(Some)
 }
 
-/// A directory output folds in every file beneath it, so `verify` proves a whole tree.
+/// A directory output folds in every file beneath it.
 fn fingerprints(graph: &Graph) -> Result<Vec<(&str, String)>> {
     graph
         .tasks
@@ -339,7 +337,7 @@ fn fingerprints(graph: &Graph) -> Result<Vec<(&str, String)>> {
         .collect()
 }
 
-/// [`None`] when the menu was dismissed, which is an ordinary exit.
+/// [`None`] when the menu was dismissed.
 fn choose(
     graph: &Graph,
     selectors: &[String],
@@ -360,8 +358,7 @@ fn choose(
     }))
 }
 
-/// An empty selection is an error rather than a no-op, so a mistyped name in CI cannot
-/// pass as a successful build.
+/// An empty selection is an error rather than a no-op.
 fn select(graph: &Graph, selectors: &[String]) -> Result<Graph> {
     if selectors.is_empty() {
         return Ok(graph.clone());
@@ -385,10 +382,9 @@ fn select(graph: &Graph, selectors: &[String]) -> Result<Graph> {
     Ok(Graph { tasks })
 }
 
-/// `*` is the only wildcard. A matrix identifier holds `[`, `]` and `=`, which every
-/// glob dialect reads as syntax, so `dist[target=roblox]` would stop meaning what it
-/// says. The literals must appear in order: first anchored to the start, last to the
-/// end, the rest anywhere between.
+/// `*` is the only wildcard, because a matrix identifier holds `[`, `]` and `=`. The
+/// literals must appear in order: first anchored to the start, last to the end, the
+/// rest anywhere between.
 fn matches(pattern: &str, text: &str) -> bool {
     let literals: Vec<&str> = pattern.split('*').collect();
 
@@ -402,8 +398,7 @@ fn matches(pattern: &str, text: &str) -> bool {
         return rest.is_empty();
     }
 
-    // The tail is claimed before the middles are searched, so neither can consume what
-    // the other needs.
+    // The tail is claimed before the middles are searched.
     let Some(mut rest) = rest.strip_suffix(last) else {
         return false;
     };

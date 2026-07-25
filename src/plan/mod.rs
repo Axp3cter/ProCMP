@@ -1,8 +1,7 @@
 //! Resolution: [`Manifest`] in, [`Graph`] out.
 //!
-//! Pure: no filesystem, no network, no clock, so `pcmp plan` is exactly what a build
-//! would do. Findings accumulate rather than short-circuit, so a manifest with four
-//! mistakes reports all four.
+//! Pure: no filesystem, no network, no clock. Findings accumulate rather than
+//! short-circuit.
 
 mod inherit;
 mod matrix;
@@ -64,7 +63,7 @@ pub struct Task {
 
 impl Task {
     /// Everything affecting output except the source bytes, which [`crate::build`]
-    /// folds in separately. A field omitted here can change without a rebuild.
+    /// folds in separately.
     pub fn digest(&self) -> Digest {
         let mut h = Hasher::new();
 
@@ -171,7 +170,7 @@ pub fn resolve(manifest: &Manifest, root: &AbsPath, overrides: &Overrides) -> Re
     }
 
     for (name, declared) in &manifest.profiles {
-        // A template is not a build, and would demand an `entry` it has no reason to own.
+        // A template is not a build.
         if declared.is_abstract {
             continue;
         }
@@ -251,10 +250,8 @@ fn task(
 
     let Some(template) = profile.output.as_deref() else {
         diags.push(
-            Diag::deny(MISSING_OUTPUT, format!("task `{id}` has no `output`")).help(
-                "set `output`, e.g. \"dist/{profile}/app.luau\"\n  \
-                 an artifact written somewhere you did not ask for is one you will not find",
-            ),
+            Diag::deny(MISSING_OUTPUT, format!("task `{id}` has no `output`"))
+                .help("set `output`, e.g. \"dist/{profile}/app.luau\""),
         );
         return None;
     };
@@ -286,7 +283,7 @@ fn task(
                 DARKLUA_LOADERS,
                 format!("task `{id}` declares loaders in both `loaders` and `darklua.loaders`"),
             )
-            .help("keep the `loaders` list, because only it can express which pattern wins"),
+            .help("keep the `loaders` list, which decides the order patterns match in"),
         );
         return None;
     }
@@ -349,15 +346,12 @@ fn vars(
                     BAD_VAR,
                     format!("var `{name}` in task `{id}` is not a name"),
                 )
-                .help(
-                    "a var becomes both a `{token}` and a `PCMP_<NAME>` constant, so it \
-                     has to be writable as a Luau identifier",
-                ),
+                .help("a var becomes a `{token}` and a `PCMP_<NAME>` Luau identifier"),
             );
             return None;
         }
 
-        // `PCMP_<NAME>` is uppercased, so `channel` and `Channel` would arrive as one.
+        // `PCMP_<NAME>` is uppercased, so `channel` and `Channel` collide.
         let constant = name.to_uppercase();
         if let Some(first) = constants.insert(constant.clone(), name.as_str()) {
             diags.push(
@@ -405,8 +399,7 @@ fn defines(
     defines.sort_keys();
 
     for (identifier, value) in &defines {
-        // `inject_global_value` substitutes by name, so a key that cannot be written as
-        // a global matches nothing.
+        // `inject_global_value` substitutes by name.
         if !is_identifier(identifier) {
             diags.push(
                 Diag::deny(
@@ -414,8 +407,8 @@ fn defines(
                     format!("define `{identifier}` in task `{id}` is not a Luau identifier"),
                 )
                 .help(
-                    "a define key must be writable as a global: letters, digits and \
-                     underscores, not starting with a digit, and not a keyword",
+                    "letters, digits and underscores, not starting with a digit, and \
+                     not a keyword",
                 ),
             );
             return None;
@@ -427,7 +420,7 @@ fn defines(
                     BAD_DEFINE,
                     format!("define `{identifier}` in task `{id}` is not a finite number"),
                 )
-                .help("infinity and NaN have no literal form, so use a string instead"),
+                .help("infinity and NaN have no Luau literal, so use a string"),
             );
             return None;
         }

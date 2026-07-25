@@ -1,6 +1,4 @@
-//! Scaffolding a new project.
-//!
-//! Two files and nothing else. No directories, no prompts, no `.gitignore` rewriting.
+//! Scaffolding a new project: a manifest and its schema, nothing else.
 
 use crate::error::{Error, Result};
 use crate::path::AbsPath;
@@ -49,8 +47,7 @@ pub fn run(root: &AbsPath, name: &str, entry: Option<&str>, format: Format) -> R
         ),
     };
 
-    // Both paths checked before either is written: a half-scaffolded project is one
-    // `init` refuses to finish and `plan` cannot resolve.
+    // Both paths checked before either is written.
     let manifest = free(root, names.0)?;
     let definitions_path = free(root, names.1)?;
 
@@ -77,8 +74,7 @@ fn write(path: &AbsPath, body: &str) -> Result<()> {
     std::fs::write(path.as_std(), body).map_err(|e| Error::Write(path.to_string(), e.to_string()))
 }
 
-/// A name can hold a quote or a backslash, and interpolating it raw would produce a
-/// manifest that does not parse.
+/// A name can hold a quote or a backslash.
 fn quote(value: &str) -> String {
     serde_json::Value::String(value.to_owned()).to_string()
 }

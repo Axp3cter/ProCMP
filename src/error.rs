@@ -1,7 +1,7 @@
 //! The crate's error type.
 //!
-//! Every variant leads with the file, path or task it concerns. Detail and the fix
-//! follow on indented lines.
+//! Every variant leads with the file, path or task it concerns. Detail follows on
+//! indented lines.
 
 use thiserror::Error;
 
@@ -105,7 +105,7 @@ pub enum Error {
     NoEntry(String),
 }
 
-/// Distinct per failure class, so CI can branch on why rather than on stderr.
+/// One per failure class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitCode {
     Success = 0,

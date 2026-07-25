@@ -4,10 +4,9 @@ description: darklua's configuration, passed through untouched.
 
 # darklua
 
-A profile's `darklua` block is darklua's own configuration format. ProCMP does not model
-it, rename it, restrict it or reorder it. The block is deserialised by darklua itself,
-so the accepted set is exactly what the linked version supports, and a key it does not
-know is an error carrying darklua's own message and the JSON that was emitted.
+A profile's `darklua` block is darklua's own configuration format, deserialised by
+darklua. An unknown key is an error carrying darklua's message and the JSON that was
+emitted.
 
 {% code title="pcmp.json5" %}
 ```json5
@@ -48,13 +47,11 @@ Three ways to say it, meaning three different things:
 <tr><td><code>rules: [a, b, c]</code></td><td>Exactly these, in this order</td></tr>
 </tbody></table>
 
-A rule in object form takes `apply_to_files` and `skip_files`, so one rule can be scoped
-without splitting the profile.
+A rule in object form takes `apply_to_files` and `skip_files`.
 
 ## Injection comes first
 
-Each `define` becomes an `inject_global_value` rule ahead of whatever you wrote. Nothing
-downstream can fold a value that has not been substituted yet.
+Each `define` becomes an `inject_global_value` rule ahead of whatever you wrote.
 
 ```
 $ pcmp explain release
@@ -73,8 +70,7 @@ darklua configuration
   }
 ```
 
-That block is valid `.darklua.json`, and its keys come out sorted so the same
-configuration never gets two cache keys.
+That block is valid `.darklua.json`. Keys come out sorted.
 
 ## Order is reported, not corrected
 
@@ -88,13 +84,10 @@ error  branch-before-fold: task `release`: `remove_unused_if_branch` runs before
        help:   a branch is only removable once its condition has folded to a constant
 ```
 
-darklua's own default list is a valid ordering, so a lint stricter than the tool it
-lints for would reject working manifests. A rule listed twice is not a finding either:
-running a pass again after an earlier rule exposed new foldable code is a technique.
+A rule listed twice is not a finding.
 
 ## Headers
 
-`remove_comments` strips Luau directives along with everything else, and the `dense` and
-`readable` generators discard comments regardless. Headers are written by ProCMP after
-darklua finishes, so nothing downstream can remove them. See
-[`header`](manifest.md#entry-and-output).
+`remove_comments` strips Luau directives, and the `dense` and `readable` generators
+discard comments regardless. [`header`](manifest.md#entry-and-output) is written after
+darklua finishes.

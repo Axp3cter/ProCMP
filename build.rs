@@ -1,5 +1,4 @@
-//! Bakes the linked darklua version into the binary, so it cannot disagree with the
-//! version mixed into cache keys.
+//! Bakes the linked darklua version into the binary.
 
 use std::path::{Path, PathBuf};
 

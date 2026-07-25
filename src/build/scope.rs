@@ -1,4 +1,4 @@
-//! What counts as a build input, derived from the plan rather than guessed.
+//! What counts as a build input, derived from the plan.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -9,12 +9,11 @@ use crate::error::{Error, Result};
 use crate::path::AbsPath;
 use crate::plan::Graph;
 
-/// Version-control metadata: never an input, and it changes on every commit.
+/// Version-control metadata, never an input.
 const VCS: &str = ".git";
 
 /// Every file under every root counts, whatever its extension. A content loader can
-/// make a `.json` or a `.png` a real input, and an extension allowlist would serve a
-/// stale artifact after one changed.
+/// make a `.json` or a `.png` a real input.
 #[derive(Debug)]
 pub struct Scope {
     roots: Vec<AbsPath>,
@@ -61,8 +60,7 @@ impl Scope {
         &self.roots
     }
 
-    /// A path that is not UTF-8 is outside the project by construction, since every
-    /// root came from an [`AbsPath`].
+    /// A path that is not UTF-8 is outside the project by construction.
     pub fn contains(&self, path: &std::path::Path) -> bool {
         path.to_str()
             .and_then(|text| AbsPath::new(text).ok())
@@ -70,7 +68,7 @@ impl Scope {
     }
 
     /// Sorted, so filesystems that enumerate differently agree. A root that does not
-    /// exist contributes nothing: a missing entry is reported per task.
+    /// exist contributes nothing.
     pub fn fingerprint(&self) -> Result<Digest> {
         let mut entries: BTreeMap<String, Digest> = BTreeMap::new();
 

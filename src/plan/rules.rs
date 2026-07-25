@@ -1,8 +1,7 @@
 //! Assembling the darklua rule list.
 //!
-//! ProCMP adds no rule vocabulary. The one thing it contributes is injection: a
-//! `define` becomes an `inject_global_value` rule, placed first because nothing
-//! downstream can fold a value that has not been substituted yet.
+//! A `define` becomes an `inject_global_value` rule, placed ahead of the declared ones
+//! so later rules see the substituted value.
 
 use std::sync::OnceLock;
 
@@ -13,8 +12,7 @@ use crate::manifest::{Define, Rule};
 
 pub const INJECT: &str = "inject_global_value";
 
-/// `defines` arrives key-sorted, so the emitted order does not depend on how the
-/// manifest was written.
+/// `defines` arrives key-sorted.
 pub fn injections(defines: &IndexMap<String, Define>) -> Vec<Rule> {
     defines
         .iter()
@@ -37,9 +35,8 @@ pub fn injections(defines: &IndexMap<String, Define>) -> Vec<Rule> {
         .collect()
 }
 
-/// [`None`] lets darklua apply its own defaults. Declaring no rules and no defines is
-/// the only case that defers: once a define exists it has to be injected, and a rule
-/// list cannot be half-specified.
+/// [`None`] lets darklua apply its own defaults, which is only reachable when a task
+/// declares no rules and no defines.
 pub fn assemble(
     defines: &IndexMap<String, Define>,
     declared: Option<&[Rule]>,
@@ -53,7 +50,7 @@ pub fn assemble(
     }
 }
 
-/// Read from the linked version rather than copied, once for the process.
+/// Read from the linked darklua once for the process.
 fn defaults() -> &'static [Rule] {
     static DEFAULTS: OnceLock<Vec<Rule>> = OnceLock::new();
 

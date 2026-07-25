@@ -1,8 +1,7 @@
 //! The config surface, as written by a user.
 //!
 //! ProCMP owns eight profile fields. Everything that configures a transformation lives
-//! under [`Profile::darklua`] and is darklua's own format, deserialised by darklua, so
-//! no capability of the linked version is unreachable.
+//! under [`Profile::darklua`], in darklua's own format.
 
 mod discover;
 mod luau;
@@ -52,8 +51,7 @@ pub struct Profile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<String>,
 
-    /// Token template. No default: a guessed location produces artifacts nobody knows
-    /// to look for.
+    /// Token template. No default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
 
@@ -73,14 +71,12 @@ pub struct Profile {
     #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub define: IndexMap<String, Define>,
 
-    /// Written above each artifact after darklua runs, because the `dense` and
-    /// `readable` generators discard comments, Luau directives included.
+    /// Written above each artifact after darklua runs, which discards comments.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub header: Option<Vec<String>>,
 
-    /// darklua spells this as a map and takes the first match, but a Luau table
-    /// iterates in hash order, so a map here would let the format decide which pattern
-    /// wins. The one place darklua's own shape is not passed through.
+    /// A list, where darklua spells this as a map: a Luau table iterates in hash order,
+    /// which would leave the format deciding which pattern wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loaders: Option<Vec<Loader>>,
 
@@ -171,7 +167,7 @@ pub struct Loader {
 }
 
 impl Manifest {
-    /// Sorts every map into key order, which is what makes the formats interchangeable.
+    /// Sorts every map into key order.
     pub fn normalise(&mut self) {
         self.vars.sort_keys();
         self.profiles.sort_keys();
@@ -191,8 +187,7 @@ impl Manifest {
                 list.dedup();
             }
 
-            // A Luau table reaches serde in hash order, so an unsorted block would
-            // serialise differently between runs and give one config two cache keys.
+            // A Luau table reaches serde in hash order.
             if let Some(darklua) = profile.darklua.as_mut() {
                 darklua.sort_keys();
                 darklua.values_mut().for_each(sort_keys);

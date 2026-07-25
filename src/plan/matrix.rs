@@ -42,8 +42,7 @@ pub fn expand(
             return;
         }
 
-        // A repeat expands to two tasks with identical coordinates, which then collide
-        // on their output and fail the whole run rather than this axis.
+        // A repeat expands to two tasks with identical coordinates.
         let mut seen: BTreeSet<&str> = BTreeSet::new();
         if let Some(repeated) = values.iter().find(|value| !seen.insert(value.as_str())) {
             diags.push(
@@ -82,7 +81,7 @@ pub fn expand(
     }
 }
 
-/// Sorted axes and declared value order make expansion identical on every machine.
+/// Axes sorted, values in declared order.
 fn combinations(axes: &IndexMap<String, Vec<String>>) -> Vec<IndexMap<String, String>> {
     let mut result: Vec<IndexMap<String, String>> = vec![IndexMap::new()];
 

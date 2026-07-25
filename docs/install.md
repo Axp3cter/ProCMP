@@ -46,8 +46,7 @@ sha256sum -c SHA256SUMS --ignore-missing
 
 ## Editor completion
 
-`pcmp init` writes the schema beside the manifest, so a fresh project already has this.
-Regenerate after upgrading:
+`pcmp init` writes the schema beside the manifest. Regenerate after upgrading:
 
 ```sh
 pcmp schema > pcmp.schema.json            # JSON, JSONC, JSON5 and TOML

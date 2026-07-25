@@ -1,9 +1,7 @@
 //! Multi-target build composition for Luau projects.
 //!
-//! darklua is linked in rather than shelled out to. Manifests are evaluated with every
-//! entropy source revoked, so config-as-code stays reproducible.
-//!
-//! Headless: rendering and argument parsing live in the `pcmp` binary.
+//! Links in darklua as a library. Rendering and argument parsing live in the `pcmp`
+//! binary.
 
 #![forbid(unsafe_code)]
 #![warn(clippy::all)]

@@ -1,15 +1,12 @@
-//! Finding a manifest and reading it.
-//!
-//! Format comes from the extension, never from content, so the same bytes cannot mean
-//! different things in different directories.
+//! Finding a manifest and reading it. Format comes from the extension, never from
+//! content.
 
 use super::{Env, Manifest};
 use crate::error::{Error, Result};
 use crate::path::AbsPath;
 
-/// Discovery order. JSON5 leads because it is what `pcmp init` writes: plain data any
-/// tool can rewrite, with `$schema` giving an editor validation. Luau comes last and is
-/// the only format that can compute a value rather than be given one.
+/// Discovery order. JSON5 leads because it is what `pcmp init` writes. Luau comes last
+/// and is the only format that can compute a value rather than be given one.
 pub const CANDIDATES: &[&str] = &[
     "pcmp.json5",
     "pcmp.json",
@@ -45,8 +42,8 @@ pub struct Loaded {
     pub root: AbsPath,
 }
 
-/// Searches `directory`, then each ancestor, so `pcmp` works from anywhere inside a
-/// project. Relative paths still resolve against the manifest's own directory.
+/// Searches `directory`, then each ancestor. Relative paths resolve against the
+/// manifest's own directory.
 pub fn discover(directory: &AbsPath) -> Result<AbsPath> {
     let mut cursor = Some(directory.clone());
 

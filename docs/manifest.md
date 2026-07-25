@@ -8,12 +8,10 @@ description: Every field, in one annotated manifest.
 same plan, and that is discovery order. Discovery starts in the working directory and
 walks up. Relative paths always resolve against the manifest's own directory.
 
-`pcmp init` writes JSON5: plain data any tool can rewrite, with `$schema` giving an
-editor validation. Luau is the one format that can compute a value rather than be given
-one, through [`pcmp.env`](#the-pcmp-api).
+`pcmp init` writes JSON5. Luau is the only format that can compute a value, through
+[`pcmp.env`](#the-pcmp-api).
 
-ProCMP owns eight profile fields. Everything that configures a transformation lives
-under [`darklua`](darklua.md) and is darklua's own format.
+Everything that configures a transformation lives under [`darklua`](darklua.md).
 
 {% code title="pcmp.json5" %}
 ```json5
@@ -76,8 +74,8 @@ vars: { name: "app", channel: "stable" },   // {name}, PCMP_NAME
 define: { DEBUG: false, MAX_RETRY: 3 },     // DEBUG, MAX_RETRY
 ```
 
-Every var is also a define. The reverse does not hold, because a define can be a boolean
-or a number and neither belongs in a filename.
+Every var is also a define. A define can be a boolean or a number, so the reverse does
+not hold.
 
 ```lua
 if DEBUG then
@@ -106,9 +104,8 @@ vars = { version = pcmp.env("VERSION") },                    -- errors when unse
 vars = { version = pcmp.envOr("VERSION", "v0.0.0-dev") },    -- explicit fallback
 ```
 
-`--var` and `--define` work whatever the format, so a JSON or TOML project is not stuck
-with literals. There is no build-timestamp define: a timestamp makes two builds of the
-same commit differ, which breaks `pcmp verify`. Pass one in if you want it.
+`--var` and `--define` work whatever the format. There is no build-timestamp define,
+because it would break `pcmp verify`. Pass one in with `--var` if you want it.
 
 ## Inheritance
 
@@ -141,16 +138,14 @@ A directory in, a directory out. Every file processed, structure preserved, no b
 entry: "src", output: "build",
 ```
 
-`header` applies to every `.luau` and `.lua` artifact either way, and `pcmp verify`
-compares the whole tree.
+`header` applies to every `.luau` and `.lua` artifact either way.
 
 `output` expands `{profile}`, every var, and every matrix axis. `{{` and `}}` are
 literal braces. An unknown token is `bad-template`, not an empty string.
 
 ## Loaders
 
-Teaches darklua what to do with files it would otherwise ignore, which is how you embed
-assets:
+Teaches darklua what to do with files it would otherwise ignore:
 
 ```json5
 loaders: [
@@ -160,8 +155,7 @@ loaders: [
 ]
 ```
 
-Require them **with the extension**, which is how darklua tells a data file from a
-module:
+Require them **with the extension**:
 
 ```lua
 local config = require("@self/assets/config.json")
@@ -170,9 +164,9 @@ local config = require("@self/assets/config.json")
 Available: `copy`, `skip`, `json`, `json_lines`, `toml`, `yaml`, `string`, `buffer`,
 `bytes`, and encoded forms such as `string/base64` and `buffer/zstd`.
 
-An ordered list rather than darklua's map, because darklua takes the first pattern that
-matches and a Luau table iterates in hash order. Declaring loaders in both places is
-`darklua-loaders`, an error.
+An ordered list rather than darklua's map, because darklua takes the first match and a
+Luau table iterates in hash order. Declaring loaders in both places is
+`darklua-loaders`.
 
 ## Matrix
 
@@ -194,7 +188,7 @@ pcmp build 'dist[target=roblox]'   # one, by exact identifier
 pcmp build '*target=roblox*'       # across an axis
 ```
 
-Each axis is also a var, so `PCMP_TARGET` folds away in builds that do not need it.
+Each axis is also a var, so a matrix over `target` gives `{target}` and `PCMP_TARGET`.
 
 ## The `pcmp` API
 
@@ -206,5 +200,4 @@ pcmp.envOr("VERSION", "v0.0.0")   -- explicit fallback
 ```
 
 Both read `--env KEY=VALUE` first, then the process environment. `os`, `io`, `require`,
-`loadstring`, `getfenv`, `setfenv`, `collectgarbage` and `math.random` are unavailable,
-so two runs of the same manifest cannot disagree.
+`loadstring`, `getfenv`, `setfenv`, `collectgarbage` and `math.random` are unavailable.

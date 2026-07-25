@@ -1,8 +1,4 @@
-//! Checks a type checker cannot express.
-//!
-//! Deliberately small. Every check here has a manifest that fires it, and all report
-//! rather than repair: a lint that silently reordered rules would make `pcmp explain`
-//! a lie.
+//! Checks a type checker cannot express. All report, none repair.
 
 use std::collections::BTreeMap;
 
@@ -26,9 +22,7 @@ struct Ordered {
     why: &'static str,
 }
 
-/// The chain darklua's own documentation calls out. Nothing else, because darklua's
-/// default rule list is itself a valid ordering and a lint stricter than the tool it
-/// lints for would reject working manifests.
+/// The orderings darklua's own documentation calls out.
 const PIPELINE: &[Ordered] = &[
     Ordered {
         earlier: rules::INJECT,
@@ -57,8 +51,7 @@ pub fn run(manifest: &Manifest, graph: &Graph) -> Vec<Diag> {
     diags
 }
 
-/// A rule listed twice is not a finding: running a pass again after an earlier rule has
-/// exposed new foldable code is a technique.
+/// A rule listed twice is not a finding.
 fn ordering(task: &Task, diags: &mut Vec<Diag>) {
     let Some(rules) = &task.rules else {
         return;
@@ -124,14 +117,13 @@ fn duplicates(manifest: &Manifest, diags: &mut Vec<Diag>) {
     let mut by_shape: BTreeMap<Digest, Vec<&str>> = BTreeMap::new();
 
     for (name, profile) in &manifest.profiles {
-        // An abstract profile exists to be extended, so matching its own child is the
-        // intended shape.
+        // An abstract profile matches its own child by design.
         if profile.is_abstract {
             continue;
         }
 
         let mut shape = profile.clone();
-        // Differing only by destination or by token values is the normal case.
+        // Excluded: differing only here is the normal case.
         shape.output = None;
         shape.vars.clear();
 

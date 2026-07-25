@@ -6,8 +6,7 @@ use procmp::build::{Outcome, Report, config_json};
 use procmp::diag::{self, Diag, Severity};
 use procmp::{AbsPath, Graph, Task};
 
-/// `println!` panics when the reader goes away, so `pcmp plan | head` would abort with
-/// a backtrace. A closed pipe is a normal end to output.
+/// `println!` panics on a closed pipe, which `pcmp plan | head` produces normally.
 pub fn outln(text: impl std::fmt::Display) {
     let _ = writeln!(std::io::stdout(), "{text}");
 }
@@ -20,7 +19,7 @@ fn emit<T: serde::Serialize>(value: &T) {
     }
 }
 
-/// Measured in characters, so non-ASCII names keep their alignment.
+/// Measured in characters, not bytes.
 fn pad(text: &str, to: usize) -> String {
     let length = text.chars().count();
     match length >= to {

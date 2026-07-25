@@ -7,9 +7,6 @@ description: Bundle one Luau source tree into many build targets from a single m
 One source tree, many artifacts. A minified release, a readable debug build, a Roblox
 variant, a Lune variant, all from one manifest.
 
-[darklua](https://darklua.com) is linked in as a library, so `pcmp` is one static binary
-with nothing to install alongside it.
-
 ```sh
 pcmp init
 ```
@@ -43,8 +40,7 @@ $ pcmp build --var version=v1.0.0
 1 built, 0 cached, 0 failed
 ```
 
-`DEBUG` is injected as an AST node, so `if DEBUG then` folds and the branch is gone from
-the artifact rather than shipped and skipped.
+`if DEBUG then` is gone from the artifact, not shipped as `if false then`.
 
 ```sh
 pcmp plan     # what would be built

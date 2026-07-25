@@ -21,7 +21,7 @@ use crate::plan::{Graph, Task};
 pub const CACHE_DIR: &str = ".pcmp";
 
 /// Extensions a header may be written to. A directory output can hold anything a `copy`
-/// loader passed through, and prepending `--!native` to an image would corrupt it.
+/// loader passed through.
 const HEADABLE: &[&str] = &["luau", "lua"];
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -88,11 +88,10 @@ impl Engine {
         self
     }
 
-    /// Failures land in the report rather than returning early, so one broken profile
-    /// does not hide the rest. Only whole-run problems return an error.
+    /// Failures land in the report rather than returning early. Only whole-run problems
+    /// return an error.
     pub fn run(&self, graph: &Graph) -> Result<Report> {
-        // Before any work: two tasks writing one path would race, and which won would
-        // depend on thread scheduling.
+        // Before any work: two tasks writing one path would race.
         let mut claimed: BTreeMap<&str, &str> = BTreeMap::new();
         for task in &graph.tasks {
             if let Some(first) = claimed.insert(task.output.as_str(), &task.id) {
@@ -128,8 +127,8 @@ impl Engine {
         Ok(Report { tasks })
     }
 
-    /// darklua goes in because the same manifest can produce different bytes against a
-    /// different version.
+    /// darklua's version goes in: one manifest can produce different bytes against a
+    /// different one.
     fn key(&self, task: &Task, sources: Digest) -> Digest {
         let mut h = Hasher::new();
         h.field("config", task.digest().bytes())
@@ -224,8 +223,7 @@ impl Engine {
             .join(format!("{}.stamp", digest::of(&task.id).hex()))
     }
 
-    /// A missing stamp reads as stale. A needless rebuild costs seconds, a wrong cache
-    /// hit costs correctness.
+    /// A missing or unreadable stamp reads as stale.
     fn fresh(&self, task: &Task, key: Digest) -> bool {
         let Ok(path) = self.stamp(task) else {
             return false;
@@ -276,8 +274,7 @@ pub fn artifacts(output: &AbsPath) -> Result<Vec<AbsPath>> {
     Ok(found)
 }
 
-/// Mostly the manifest's own `darklua` block. Only `rules`, which carries the
-/// injections, and `loaders`, which a manifest format cannot order, are written here.
+/// The manifest's own `darklua` block, with `rules` and `loaders` written over it.
 pub fn config_json(task: &Task) -> Value {
     let mut config = task.darklua.clone();
 
@@ -303,7 +300,7 @@ pub fn config_json(task: &Task) -> Value {
 
 use crate::manifest::Rule;
 
-/// On rejection the error carries the emitted JSON, so the reader sees what was made.
+/// On rejection the error carries the emitted JSON.
 fn configuration(task: &Task) -> Result<Configuration> {
     let json = config_json(task);
     serde_json::from_value(json.clone()).map_err(|e| {

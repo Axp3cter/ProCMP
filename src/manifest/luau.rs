@@ -1,9 +1,7 @@
 //! The Luau front end.
 //!
-//! A manifest is a program, and stays reproducible because the interpreter has nothing
-//! nondeterministic left in it. Luau's sandbox removes `os`, `io`, `load`, `dofile`,
-//! `debug` and `coroutine`, and [`REVOKED`] removes the rest. Its only channel outward
-//! is `pcmp.env`.
+//! Luau's sandbox removes `os`, `io`, `load`, `dofile`, `debug` and `coroutine`, and
+//! [`REVOKED`] removes the rest. The only channel outward is `pcmp.env`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -26,14 +24,12 @@ pub const REVOKED: &[&str] = &[
 
 const REVOKED_MEMBERS: &[(&str, &str)] = &[("math", "random"), ("math", "randomseed")];
 
-/// So a manifest that never terminates fails instead of hanging.
+/// Bounds a manifest that never terminates.
 const BUDGET: u64 = 50_000_000;
 const MEMORY: usize = 32 * 1024 * 1024;
 
-/// What `pcmp.env` reads: `--env` values, then the process environment.
-///
-/// Passed explicitly rather than exported, so a value given on the command line cannot
-/// reach anything ProCMP spawns.
+/// What `pcmp.env` reads: `--env` values, then the process environment. Passed
+/// explicitly rather than exported.
 #[derive(Debug, Clone, Default)]
 pub struct Env(Vec<(String, String)>);
 
@@ -141,8 +137,7 @@ fn install_api(lua: &Lua, origin: &str, env: &Env) -> Result<()> {
     let api = lua.create_table().map_err(|e| vm("create the api", e))?;
     let shared = Arc::new(env.clone());
 
-    // An error rather than an empty string, so a missing variable cannot become a
-    // release stamped with nothing.
+    // An error rather than an empty string.
     let read = Arc::clone(&shared);
     let required = lua
         .create_function(move |_, name: String| {

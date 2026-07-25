@@ -14,8 +14,7 @@ warn   unused-profile: abstract profile `old` is never extended or used as a mat
 1 error(s), 1 warning(s)
 ```
 
-Codes are stable names. Findings accumulate, so four mistakes report four in one run.
-`--strict` makes warnings fail too.
+Codes are stable names. `--strict` makes warnings fail too.
 
 ## Resolution
 
@@ -40,7 +39,7 @@ no-tasks              no profiles and no matrix
 
 `inject_global_value` substitutes by name, so a define key such as `my-flag` or `end`
 matches nothing. A var becomes `PCMP_<NAME>` uppercased, so `channel` and `Channel`
-would both become one constant and the second would quietly replace the first.
+collide.
 
 ## Rule order
 

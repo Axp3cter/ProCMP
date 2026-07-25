@@ -55,8 +55,7 @@ impl Hasher {
         self
     }
 
-    /// Order-sensitive. The count goes in last, which is what lets this stream the
-    /// items rather than collect them to learn their length.
+    /// Order-sensitive. The count goes in last, so the items can be streamed.
     pub fn seq<I, S>(&mut self, label: &str, items: I) -> &mut Self
     where
         I: IntoIterator<Item = S>,

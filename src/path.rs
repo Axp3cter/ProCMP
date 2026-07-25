@@ -1,13 +1,12 @@
 //! Absolute, lexically normalised, UTF-8 paths.
 //!
-//! Lexical means no symlink resolution and no existence check, which keeps resolution
-//! pure and lets a plan be built without touching disk.
+//! Lexical means no symlink resolution and no existence check.
 
 use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 
 use crate::error::{Error, Result};
 
-/// Holding one is proof that absoluteness and `..` traversal were already checked.
+/// Absoluteness and `..` traversal are checked once, at construction.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, serde::Serialize)]
 #[serde(transparent)]
 pub struct AbsPath(Utf8PathBuf);
@@ -63,8 +62,8 @@ impl AbsPath {
         self.0.extension()
     }
 
-    /// Falls back to the absolute form when not under `base`, and renders an equal
-    /// path as `.` so it never comes out empty.
+    /// Falls back to the absolute form when not under `base`, and renders an equal path
+    /// as `.`.
     pub fn relative_to(&self, base: &AbsPath) -> String {
         match self.0.strip_prefix(&base.0) {
             Ok(relative) if relative.as_str().is_empty() => ".".to_owned(),

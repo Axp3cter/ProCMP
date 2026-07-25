@@ -17,8 +17,7 @@ pcmp [OPTIONS] <COMMAND>
 <tr><td><code>--json</code></td><td>Machine-readable output. Works on every command</td></tr>
 </tbody></table>
 
-All are repeatable where a value is taken. `--env` is read by the manifest but never
-exported, so it cannot reach anything ProCMP runs.
+All are repeatable. `--env` is never exported to child processes.
 
 ## `plan`
 
@@ -32,8 +31,7 @@ $ pcmp plan
   release  dist/release/app.luau  11 rules
 ```
 
-Touches no source files, so this is exactly what a build would do. The digest covers
-every task, so two checkouts can be compared without building either.
+Touches no source files. The digest covers every task.
 
 ## `build [TASKS]`
 
@@ -46,16 +44,14 @@ pcmp build --pick                  # choose from a menu
 pcmp build --no-cache              # rebuild regardless of cached state
 ```
 
-`*` is the only wildcard. A matrix identifier holds `[`, `]` and `=`, which every glob
-dialect would read as syntax.
+`*` is the only wildcard, because a matrix identifier holds `[`, `]` and `=`.
 
-Tasks run in parallel. Failures are collected rather than aborting, so one broken
-profile does not hide the others. A selection matching nothing is an error, not a no-op.
+Tasks run in parallel. A failure is collected, not aborted on. A selection matching
+nothing is an error.
 
 ### `--pick`
 
-A menu on stderr. Arrows move, enter chooses. Every action is a row, so there is no
-legend to read.
+A menu on stderr. Arrows move, enter chooses.
 
 ```
   build
@@ -70,8 +66,7 @@ legend to read.
     Cancel
 ```
 
-Runs only when the flag is given and only when stdin and stderr are both terminals, so
-a script or a CI job is never asked a question it cannot answer.
+Requires stdin and stderr to both be terminals, and errors otherwise.
 
 ## `check`
 
@@ -92,17 +87,15 @@ $ pcmp verify
 reproducible: 2 task(s) byte-identical across two builds
 ```
 
-Names the differing tasks if anything changed. A build that fails is reported as a build
-failure, not as a comparison that could not be made.
+Names the differing tasks if anything changed.
 
 ## `watch [TASKS]`
 
 Builds, then rebuilds whenever an input or the manifest changes. Accepts the same
 selectors as `build`, including `--pick`.
 
-The watched set is the same one the cache is keyed on, so nothing can wake the watcher
-without invalidating a build, or the reverse. The manifest is re-read each cycle, so
-editing it takes effect without a restart, including an edit that breaks it.
+The watched set is the one the cache is keyed on. The manifest is re-read each cycle,
+including an edit that breaks it.
 
 ## `explain [TASK]`
 
@@ -123,8 +116,8 @@ next     pcmp plan
 ```
 
 `--format luau` writes `pcmp.luau` and `pcmp.d.luau` instead. The entry point is
-detected from `src/init.luau`, `src/main.luau`, `init.luau` or `main.luau`. It refuses
-to overwrite, so it is safe to run twice.
+detected from `src/init.luau`, `src/main.luau`, `init.luau` or `main.luau`. Refuses to
+overwrite.
 
 ## `schema`
 
@@ -138,27 +131,22 @@ Needs no project. See [Install](install.md#editor-completion).
 ## Inputs and caching
 
 A task is skipped when its configuration, every input, and the linked darklua are all
-unchanged. What counts as an input is derived from the plan, not guessed at from
-directory names.
+unchanged.
 
 **Hashed:** every file under the manifest's directory and under every `sources` root,
-whatever its extension. There is no allowlist, because a content loader can make a
-`.json` or a `.png` a real input.
+whatever its extension. A content loader can make a `.json` or a `.png` a build input.
 
-**Not hashed:** every task's `output`, the cache directory, `.git`, and anything
-matching `ignore`. Nothing else is assumed, so `dist` and `node_modules` are not special
-names.
+**Not hashed:** every task's `output`, the cache directory, `.git`, and anything matching
+`ignore`.
 
 ```json5
 sources: ["../shared"],            // extra roots
 ignore: ["**/Packages/**"],        // wax globs, relative to each root
 ```
 
-`ignore` is a speed control, not a correctness one. Ignoring a directory the build reads
-means edits there will not rebuild.
+Ignoring a directory the build reads means edits there will not rebuild.
 
-Editing one file rebuilds every task. darklua follows requires, so a per-task input list
-would have to guess at what a module pulls in.
+Editing one file rebuilds every task.
 
 ## Exit codes
 

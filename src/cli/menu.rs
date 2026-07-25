@@ -1,13 +1,7 @@
 //! The `--pick` menu.
 //!
-//! Reachable only through the flag, so a script that never passes it behaves as before.
-//! A build that blocks on a prompt cannot run unattended, and one that asks for a
-//! version at build time produces different bytes from the same commit, which is what
-//! makes this a menu rather than a wizard: it chooses among tasks the manifest already
-//! declares and changes nothing else.
-//!
-//! Every action is a row, so there is no legend to read. Drawn on stderr, so
-//! `pcmp build --pick --json | jq` still works.
+//! Chooses among tasks the manifest already declares. Drawn on stderr, leaving stdout
+//! for `--json`.
 
 use std::io::{self, IsTerminal, Write};
 
@@ -117,7 +111,6 @@ pub fn tasks(graph: &Graph, root: &AbsPath, title: &str, mode: Mode) -> Result<O
                 Row::Act(Action::SelectAll) => chosen.fill(true),
                 Row::Act(Action::ClearAll) => chosen.fill(false),
 
-                // Confirming nothing would build nothing, which reads as a hang.
                 Row::Act(Action::Confirm) => {
                     let picked = ticked(&chosen);
                     if !picked.is_empty() {
@@ -129,8 +122,7 @@ pub fn tasks(graph: &Graph, root: &AbsPath, title: &str, mode: Mode) -> Result<O
     }
 }
 
-/// [`Mode::One`] needs no bulk actions and no confirm, because choosing a task is the
-/// confirmation.
+/// [`Mode::One`] needs no bulk actions and no confirm.
 fn layout(count: usize, mode: Mode) -> Vec<Row> {
     let mut rows: Vec<Row> = (0..count).map(Row::Task).collect();
     rows.push(Row::Separator);
@@ -154,8 +146,7 @@ fn ticked(chosen: &[bool]) -> Vec<usize> {
         .collect()
 }
 
-/// Wraps, and skips the separator. Bounded by the row count: a menu always holds at
-/// least one action, so a full lap cannot run out of landing places.
+/// Wraps, and skips the separator. Bounded by the row count.
 fn step(rows: &[Row], from: usize, delta: isize) -> usize {
     let len = rows.len() as isize;
     let mut at = from as isize;
@@ -170,7 +161,7 @@ fn step(rows: &[Row], from: usize, delta: isize) -> usize {
     at as usize
 }
 
-/// Anything else is ignored rather than guessed at.
+/// Unmapped keys are ignored.
 fn keypress() -> Result<Option<Key>> {
     let Event::Key(key) = event::read().map_err(failed)? else {
         return Ok(None);
