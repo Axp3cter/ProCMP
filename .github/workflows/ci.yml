@@ -89,6 +89,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # A prebuilt binary, not `cargo install`. Every cargo call in this directory runs
+      # under the pinned toolchain, and `rustsec/audit-check` installs cargo-audit
+      # unlocked — so a fresh resolution can pull a transitive dependency whose MSRV is
+      # newer than the pin and fail the job for a reason unrelated to this crate.
+      # Downloading the tool sidesteps the pin entirely and keeps the job seconds long.
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
