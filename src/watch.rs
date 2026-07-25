@@ -28,18 +28,35 @@ const SETTLE: Duration = Duration::from_millis(200);
 ///
 /// The watched set is the same [`Scope`] the cache is keyed on, so anything that would
 /// invalidate a build wakes the watcher and nothing else does.
+///
+/// # Errors
+///
+/// When the platform watcher cannot be created, or a root cannot be watched.
 pub fn run(scope: &Scope, manifest: &AbsPath, mut on_change: impl FnMut()) -> Result<()> {
-    on_change();
-
     let (tx, rx) = mpsc::channel();
-    let mut debouncer =
-        new_debouncer(SETTLE, None, tx).map_err(|e| Error::Watch("<all>".into(), e.to_string()))?;
+    let mut debouncer = new_debouncer(SETTLE, None, tx)
+        .map_err(|e| Error::Watch("the filesystem".into(), e.to_string()))?;
 
     for root in scope.roots() {
         debouncer
             .watch(root.as_std(), RecursiveMode::Recursive)
             .map_err(|e| Error::Watch(root.to_string(), e.to_string()))?;
     }
+
+    // A manifest reached with `-m` can sit outside every source root, and editing it
+    // has to take effect. Watching its directory rather than the file survives the
+    // rename-into-place that most editors save with.
+    if !scope.roots().iter().any(|root| manifest.is_under(root))
+        && let Some(directory) = manifest.parent()
+    {
+        debouncer
+            .watch(directory.as_std(), RecursiveMode::NonRecursive)
+            .map_err(|e| Error::Watch(directory.to_string(), e.to_string()))?;
+    }
+
+    // Watching is established first, so an edit made while the first build runs is
+    // queued rather than lost.
+    on_change();
 
     for batch in rx {
         // A failed batch means the watcher lost events, not that the project is

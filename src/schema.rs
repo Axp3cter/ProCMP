@@ -22,7 +22,13 @@ pub fn luau() -> String {
     );
 
     if let Some(defs) = schema.get("$defs").and_then(Value::as_object) {
-        for (name, body) in defs {
+        // Sorted rather than left in schemars' insertion order, so regenerating after
+        // an unrelated field moves does not rewrite the whole file.
+        let mut names: Vec<&String> = defs.keys().collect();
+        names.sort();
+
+        for name in names {
+            let Some(body) = defs.get(name) else { continue };
             out.push_str(&format!("export type {name} = {}\n\n", type_of(body)));
         }
     }
@@ -57,7 +63,12 @@ fn schema() -> Value {
 /// else becomes `any` rather than a plausible-looking guess.
 fn type_of(node: &Value) -> String {
     if let Some(reference) = node.get("$ref").and_then(Value::as_str) {
-        return reference.rsplit('/').next().unwrap_or("any").to_owned();
+        // A reference with nothing after its last separator would name a type `` and
+        // emit `export type  = ...`, which does not parse.
+        return match reference.rsplit('/').next() {
+            Some(name) if !name.is_empty() => name.to_owned(),
+            _ => "any".to_owned(),
+        };
     }
 
     // `oneOf` carries string enums: each branch is a single `const`.
@@ -148,11 +159,21 @@ fn object_of(node: &Value) -> String {
     format!("{{\n{fields}}}")
 }
 
+/// Luau words that cannot appear as a bare field name.
+const KEYWORDS: &[&str] = &[
+    "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local",
+    "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
+];
+
 /// Quotes a key that is not a bare Luau identifier.
+///
+/// A keyword is quoted too. A manifest field named `end` is legal JSON and legal Rust,
+/// and emitting it bare would produce definitions that do not parse.
 fn key(name: &str) -> String {
     let bare = !name.is_empty()
         && !name.starts_with(|c: char| c.is_ascii_digit())
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !KEYWORDS.contains(&name);
 
     if bare {
         name.to_owned()

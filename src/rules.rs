@@ -8,6 +8,8 @@
 //! `inject_global_value` rule, placed first because nothing downstream can fold a
 //! value that has not been substituted yet.
 
+use std::sync::OnceLock;
+
 use indexmap::IndexMap;
 use serde_json::{Map, Number, Value};
 
@@ -55,16 +57,31 @@ pub fn assemble(
 
     match (declared, injections.is_empty()) {
         (None, true) => None,
-        (None, false) => Some([injections, darklua_defaults()].concat()),
-        (Some(rules), _) => Some([injections, rules.to_vec()].concat()),
+        (None, false) => Some([injections.as_slice(), darklua_defaults()].concat()),
+        (Some(rules), _) => Some([injections.as_slice(), rules].concat()),
     }
 }
 
 /// darklua's own default rules, read from the linked version rather than copied.
-fn darklua_defaults() -> Vec<Rule> {
-    darklua_core::rules::get_default_rules()
-        .iter()
-        .filter_map(|rule| serde_json::to_value(rule.as_ref()).ok())
-        .filter_map(|value| serde_json::from_value(value).ok())
-        .collect()
+///
+/// Round-tripped once for the process. Every task that omits `rules` while declaring a
+/// define needs this list, and the trip through JSON is the same answer every time.
+///
+/// A rule that fails to round-trip would silently shorten the list and change what a
+/// build produces, so it panics instead: the only way to reach it is a darklua release
+/// whose default set no longer serialises, which is a broken build of ProCMP rather
+/// than a mistake in anyone's manifest.
+fn darklua_defaults() -> &'static [Rule] {
+    static DEFAULTS: OnceLock<Vec<Rule>> = OnceLock::new();
+
+    DEFAULTS.get_or_init(|| {
+        darklua_core::rules::get_default_rules()
+            .iter()
+            .map(|rule| {
+                let value =
+                    serde_json::to_value(rule.as_ref()).expect("a darklua rule always serialises");
+                serde_json::from_value(value).expect("a darklua rule always deserialises")
+            })
+            .collect()
+    })
 }

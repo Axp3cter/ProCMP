@@ -4,6 +4,8 @@
 //! build would do rather than an approximation. Findings accumulate rather than
 //! short-circuit, so a manifest with four mistakes reports all four in one run.
 
+use std::collections::BTreeSet;
+
 use indexmap::IndexMap;
 use serde_json::{Map, Value};
 
@@ -36,10 +38,18 @@ pub const BAD_DEFINE: &str = "bad-define";
 pub const BAD_RULES: &str = "bad-rules";
 /// Loaders declared in both places, where only one can win.
 pub const DARKLUA_LOADERS: &str = "darklua-loaders";
-/// A var name cannot become a token or a constant.
+/// A var name cannot become a token or a constant, or two collide.
 pub const BAD_VAR: &str = "bad-var";
+/// A matrix axis lists the same value twice.
+pub const DUPLICATE_AXIS_VALUE: &str = "duplicate-axis-value";
 /// The manifest declares neither profiles nor matrices.
 pub const NO_TASKS: &str = "no-tasks";
+
+/// Luau words that cannot be used as a name.
+const KEYWORDS: &[&str] = &[
+    "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local",
+    "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
+];
 
 /// One unit of work, fully resolved: no inherited fields, no relative paths, no
 /// unexpanded templates.
@@ -108,6 +118,7 @@ fn json<T: serde::Serialize>(value: &T) -> String {
 /// The resolved plan.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Graph {
+    /// Every task, ordered by identifier.
     pub tasks: Vec<Task>,
 }
 
@@ -117,19 +128,23 @@ impl Graph {
         Self { tasks }
     }
 
+    /// How many tasks the plan holds.
     pub fn len(&self) -> usize {
         self.tasks.len()
     }
 
+    /// Whether the plan holds no tasks.
     pub fn is_empty(&self) -> bool {
         self.tasks.is_empty()
     }
 
+    /// The task with this identifier, or [`None`].
     pub fn get(&self, id: &str) -> Option<&Task> {
         self.tasks.iter().find(|task| task.id == id)
     }
 
-    pub fn ids(&self) -> String {
+    /// Every task identifier, rendered for a "did you mean" message.
+    pub fn known(&self) -> String {
         join(self.tasks.iter().map(|task| task.id.as_str()))
     }
 
@@ -154,7 +169,9 @@ pub struct Resolution {
 /// anything the manifest says without the manifest having to anticipate them.
 #[derive(Debug, Clone, Default)]
 pub struct Overrides {
+    /// Constants from `--define`.
     pub defines: IndexMap<String, Define>,
+    /// Tokens from `--var`.
     pub vars: IndexMap<String, String>,
 }
 
@@ -339,7 +356,7 @@ fn known(manifest: &Manifest) -> String {
 }
 
 /// Renders a name list for a "did you mean" message.
-pub fn join<'a>(names: impl Iterator<Item = &'a str>) -> String {
+fn join<'a>(names: impl Iterator<Item = &'a str>) -> String {
     let joined = names.collect::<Vec<_>>().join(", ");
     if joined.is_empty() {
         "<none>".into()
@@ -402,6 +419,7 @@ fn task(
     vars.insert("profile".into(), profile_name.to_owned());
     vars.sort_keys();
 
+    let mut constants: IndexMap<String, &str> = IndexMap::new();
     for name in vars.keys() {
         if !is_identifier(name) {
             diags.push(
@@ -411,8 +429,22 @@ fn task(
                 )
                 .help(
                     "a var becomes both a `{token}` and a `PCMP_<NAME>` constant, so it \
-                         has to be writable as a Luau identifier",
+                     has to be writable as a Luau identifier",
                 ),
+            );
+            return None;
+        }
+
+        // `PCMP_<NAME>` is uppercased, so `channel` and `Channel` would arrive as one
+        // constant and the second would quietly replace the first.
+        let constant = name.to_uppercase();
+        if let Some(first) = constants.insert(constant.clone(), name.as_str()) {
+            diags.push(
+                Diag::deny(
+                    BAD_VAR,
+                    format!("vars `{first}` and `{name}` in task `{id}` share a constant"),
+                )
+                .help(format!("both become `PCMP_{constant}`, so rename one")),
             );
             return None;
         }
@@ -619,6 +651,20 @@ fn expand(
             );
             return;
         }
+
+        // A repeat would expand to two tasks with identical coordinates, which then
+        // collide on their output path and fail the whole run rather than this axis.
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        if let Some(repeated) = values.iter().find(|value| !seen.insert(value.as_str())) {
+            diags.push(
+                Diag::deny(
+                    DUPLICATE_AXIS_VALUE,
+                    format!("matrix `{name}` axis `{axis}` lists `{repeated}` twice"),
+                )
+                .help("each value expands to one task, so a repeat has no second meaning"),
+            );
+            return;
+        }
     }
 
     let Some(base) = flatten(manifest, &matrix.base, diags) else {
@@ -666,20 +712,14 @@ fn combinations(axes: &IndexMap<String, Vec<String>>) -> Vec<IndexMap<String, St
     result
 }
 
-/// Luau words that cannot be used as a name.
-const KEYWORDS: &[&str] = &[
-    "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local",
-    "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
-];
-
 /// Whether `name` can appear as a global in Luau source.
 fn is_identifier(name: &str) -> bool {
     let mut characters = name.chars();
 
     characters
         .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && characters.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && characters.all(|rest| rest.is_ascii_alphanumeric() || rest == '_')
         && !KEYWORDS.contains(&name)
 }
 

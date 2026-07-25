@@ -31,11 +31,16 @@ bad-path              a path in entry, output or sources is empty, or escapes th
 unknown-matrix-base   matrix base names a profile that does not exist
 empty-axis            a matrix axis has no values
 bad-define            a define key is not a Luau identifier, or its value is not finite
-bad-var               a var name cannot become a token and a constant
+bad-var               a var name cannot become a token and a constant, or two collide
+duplicate-axis-value  a matrix axis lists the same value twice
 bad-rules             darklua.rules is not a list darklua could read
 darklua-loaders       loaders declared in both `loaders` and `darklua.loaders`
 no-tasks              no profiles and no matrix
 ```
+
+`bad-var` covers both halves too. A name has to be writable as a Luau identifier, and
+two names that differ only in case would both become one `PCMP_<NAME>` constant, so the
+second would quietly replace the first.
 
 `bad-define` covers both halves of "this define cannot become a literal".
 `inject_global_value` substitutes by name, so a key such as `my-flag` or `end` matches
@@ -77,8 +82,8 @@ matched nothing.
 ## Exit codes
 
 <table><thead><tr><th width="90">Code</th><th></th></tr></thead><tbody>
-<tr><td><code>0</code></td><td>Success.</td></tr>
-<tr><td><code>1</code></td><td>A build task failed, or output was not reproducible.</td></tr>
-<tr><td><code>2</code></td><td>The manifest could not be loaded or resolved.</td></tr>
-<tr><td><code>5</code></td><td><code>check</code> found an error, or a warning under <code>--strict</code>.</td></tr>
+<tr><td><code>0</code></td><td>Success</td></tr>
+<tr><td><code>1</code></td><td>A build task failed, or output was not reproducible</td></tr>
+<tr><td><code>2</code></td><td>The manifest could not be loaded or resolved</td></tr>
+<tr><td><code>5</code></td><td><code>check</code> found an error, or a warning under <code>--strict</code></td></tr>
 </tbody></table>

@@ -33,33 +33,33 @@ jobs:
 
       - run: cargo build --release --target ${{ matrix.target }}
 
+      # Zip on every platform, holding the binary alone at the archive root.
+      #
+      # Aftman reads zip only, and when no entry matches the tool name it installs the
+      # first one ending with the platform's executable suffix. That suffix is empty on
+      # Unix, so a README beside the binary would be installed as the tool. Rokit is
+      # stricter but scores a lone executable highest either way. The archive name
+      # carries the target triple, which is what both use to pick an asset.
       - name: Package
         shell: bash
         run: |
           name="pcmp-${GITHUB_REF_NAME}-${{ matrix.target }}"
-          mkdir -p "dist/$name"
+          mkdir -p dist
 
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/pcmp.exe" "dist/$name/"
+            cp "target/${{ matrix.target }}/release/pcmp.exe" dist/
+            (cd dist && 7z a "$name.zip" pcmp.exe > /dev/null && rm pcmp.exe)
+            (cd dist && certutil -hashfile "$name.zip" SHA256 | sed -n 2p | tr -d ' \r' > "$name.zip.sha256")
           else
-            cp "target/${{ matrix.target }}/release/pcmp" "dist/$name/"
-          fi
-          cp README.md LICENSE "dist/$name/"
-
-          cd dist
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a "$name.zip" "$name" > /dev/null
-            certutil -hashfile "$name.zip" SHA256 | sed -n 2p | tr -d ' \r' > "$name.zip.sha256"
-          else
-            tar -czf "$name.tar.gz" "$name"
-            shasum -a 256 "$name.tar.gz" | cut -d' ' -f1 > "$name.tar.gz.sha256"
+            cp "target/${{ matrix.target }}/release/pcmp" dist/
+            (cd dist && zip -qj "$name.zip" pcmp && rm pcmp)
+            (cd dist && shasum -a 256 "$name.zip" | cut -d' ' -f1 > "$name.zip.sha256")
           fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: |
-            dist/*.tar.gz
             dist/*.zip
             dist/*.sha256
           if-no-files-found: error

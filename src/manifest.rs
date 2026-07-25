@@ -141,15 +141,19 @@ impl Define {
 
     /// Parses a `--define KEY=VALUE` value. `true`, `false` and any number are read as
     /// such. Everything else stays a string, which is what a shell mostly produces.
+    ///
+    /// Only a number that survives a round trip is read as one, so `007` and `1_000`
+    /// stay the strings they were written as rather than becoming `7` and `1000`.
     pub fn parse(text: &str) -> Self {
         match text {
             "true" => Self::Bool(true),
             "false" => Self::Bool(false),
-            other => other
-                .parse::<f64>()
-                .ok()
-                .filter(|n| n.is_finite())
-                .map_or_else(|| Self::Text(other.to_owned()), Self::Number),
+            other => match other.parse::<f64>() {
+                Ok(number) if number.is_finite() && format!("{number}") == other => {
+                    Self::Number(number)
+                }
+                _ => Self::Text(other.to_owned()),
+            },
         }
     }
 }
@@ -227,11 +231,23 @@ impl Manifest {
             profile.vars.sort_keys();
             profile.define.sort_keys();
 
+            // Neither list carries meaning in its order, so two manifests naming the
+            // same roots differently should not resolve to two cache keys. `loaders`
+            // is deliberately not here: its order decides which pattern wins.
+            for list in [profile.sources.as_mut(), profile.ignore.as_mut()]
+                .into_iter()
+                .flatten()
+            {
+                list.sort();
+                list.dedup();
+            }
+
             // A Luau table reaches serde in hash order, so an unsorted `darklua` block
             // would serialise differently on each run and thrash the cache. `loaders`
             // is the one map whose order carries meaning, and it is not in here.
             if let Some(darklua) = profile.darklua.as_mut() {
-                sort_keys(darklua);
+                darklua.sort_keys();
+                darklua.values_mut().for_each(sort_keys);
             }
         }
 
@@ -244,18 +260,17 @@ impl Manifest {
 }
 
 /// Sorts every object key in a JSON tree, in place.
-fn sort_keys(map: &mut Map<String, Value>) {
-    map.sort_keys();
-
-    for value in map.values_mut() {
-        match value {
-            Value::Object(nested) => sort_keys(nested),
-            Value::Array(items) => items.iter_mut().for_each(|item| {
-                if let Value::Object(nested) = item {
-                    sort_keys(nested);
-                }
-            }),
-            _ => {}
+///
+/// Recurses through arrays as well as objects, at any depth. A single object left in
+/// hash order anywhere under `darklua` would serialise differently between runs and
+/// give one configuration two cache keys.
+fn sort_keys(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            map.sort_keys();
+            map.values_mut().for_each(sort_keys);
         }
+        Value::Array(items) => items.iter_mut().for_each(sort_keys),
+        _ => {}
     }
 }

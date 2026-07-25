@@ -4,28 +4,17 @@ description: Every field, in one annotated manifest.
 
 # Manifest
 
-`pcmp.luau`, `pcmp.json`, `pcmp.jsonc`, `pcmp.json5` and `pcmp.toml` all resolve to the
-same plan. JSON is parsed leniently, so comments and trailing commas are fine. Unknown
-keys are rejected.
+`pcmp.json5`, `pcmp.json`, `pcmp.jsonc`, `pcmp.toml` and `pcmp.luau` all resolve to the
+same plan, and that is discovery order. JSON is parsed leniently, so comments and
+trailing commas are fine. Unknown keys are rejected.
+
+`pcmp init` writes JSON5, because it is plain data any tool can read or rewrite and
+`$schema` gives an editor validation with no further setup. Luau is the one format that
+can compute a value rather than be given one.
 
 Discovery starts in the working directory and walks up, so `pcmp` works from anywhere
 inside a project. Relative paths always resolve against the manifest's own directory,
 never against where the command was run.
-
-## The split
-
-ProCMP owns eight profile fields. Everything that configures a transformation lives
-under `darklua` and is darklua's own configuration format, deserialised by darklua.
-
-<table><thead><tr><th width="230">ProCMP</th><th></th></tr></thead><tbody>
-<tr><td><code>abstract</code>, <code>extends</code></td><td>Inheritance.</td></tr>
-<tr><td><code>entry</code>, <code>output</code></td><td>What is read and where it is written.</td></tr>
-<tr><td><code>sources</code>, <code>ignore</code></td><td>What counts as a build input. See <a href="inputs.md">Inputs</a>.</td></tr>
-<tr><td><code>vars</code>, <code>define</code></td><td>Tokens and compile-time constants.</td></tr>
-<tr><td><code>header</code></td><td>Lines written after darklua runs.</td></tr>
-<tr><td><code>loaders</code></td><td>The one darklua setting ProCMP re-spells, because order matters.</td></tr>
-<tr><td><code>darklua</code></td><td>Everything else, verbatim.</td></tr>
-</tbody></table>
 
 ## Everything at once
 
@@ -118,15 +107,13 @@ if PCMP_CHANNEL == "stable" then
 end
 ```
 
-`{profile}` is always available. Matrix axes contribute one token each. `--var` beats
-all of them:
+`{profile}` is always available. Matrix axes contribute one token each. Two names that
+differ only in case are `bad-var`, because both would become one `PCMP_<NAME>`. `--var`
+beats all of them:
 
 ```sh
 pcmp build --var version="$(git describe --tags)"
 ```
-
-There is no `project` or `version` field. Both were `vars` entries with a special case
-attached, and the special case bought nothing a token could not do.
 
 ## Inheritance
 
@@ -164,14 +151,8 @@ entry = "src", output = "build",
 
 `header` applies to every artifact either way, and `pcmp verify` compares the whole tree.
 
-## Output tokens
-
-```lua
-output = "dist/{profile}/{name}-{version}.luau"
-```
-
-`{profile}`, every var, and every matrix axis. `{{` and `}}` are literal braces. An
-unknown token is `bad-template`, not an empty string.
+`output` expands `{profile}`, every var, and every matrix axis. `{{` and `}}` are
+literal braces. An unknown token is `bad-template`, not an empty string.
 
 ## Loaders
 
@@ -195,14 +176,11 @@ local readme = require("@self/assets/readme.md")
 ```
 
 Available: `copy`, `skip`, `json`, `json_lines`, `toml`, `yaml`, `string`, `buffer`,
-`bytes`, and the encoded forms `string/base64`, `buffer/zstd`, `bytes/gzip` and so on.
+`bytes`, and encoded forms such as `string/base64` and `buffer/zstd`.
 
-{% hint style="info" %}
-This is the one darklua setting ProCMP re-spells. darklua takes the first pattern that
-matches, and a Luau table iterates in hash order. A map here would let the manifest
-format decide which pattern wins. Declaring loaders in both `loaders` and
+An ordered list rather than darklua's map, because darklua takes the first pattern that
+matches and a Luau table iterates in hash order. Declaring loaders in both `loaders` and
 `darklua.loaders` is `darklua-loaders`, an error.
-{% endhint %}
 
 ## Matrix
 
@@ -240,45 +218,3 @@ Both read `--env KEY=VALUE` first, then the process environment.
 `os`, `io`, `require`, `loadstring`, `getfenv`, `setfenv`, `collectgarbage` and
 `math.random` are unavailable, so two runs of the same manifest cannot disagree.
 
-## Other formats
-
-{% tabs %}
-{% tab title="JSON" %}
-```json
-{
-  "$schema": "./pcmp.schema.json",
-  "vars": { "name": "app", "version": "v1.0.0" },
-  "profiles": {
-    "release": {
-      "entry": "src/init.luau",
-      "output": "dist/{name}.luau",
-      "define": { "DEBUG": false },
-      "darklua": {
-        "generator": "dense",
-        "rules": ["compute_expression", "rename_variables"]
-      }
-    }
-  }
-}
-```
-{% endtab %}
-
-{% tab title="TOML" %}
-```toml
-[vars]
-name = "app"
-version = "v1.0.0"
-
-[profiles.release]
-entry = "src/init.luau"
-output = "dist/{name}.luau"
-
-[profiles.release.define]
-DEBUG = false
-
-[profiles.release.darklua]
-generator = "dense"
-rules = ["compute_expression", "rename_variables"]
-```
-{% endtab %}
-{% endtabs %}

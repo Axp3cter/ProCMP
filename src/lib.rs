@@ -4,19 +4,11 @@
 //! `PATH` lookup, no version drift, and no temp files. Manifests are evaluated in a
 //! Luau VM with every entropy source revoked, so config-as-code stays reproducible.
 //!
-//! # Conventions
-//!
-//! Missing data is reported, never replaced with a placeholder. A default appears only
-//! where the reason for it appears beside it. Parsing happens once, at the manifest
-//! boundary, and nothing downstream re-validates. Anything a user sees is ordered, and
-//! identical input produces identical bytes. `process::exit` appears only in `main`
-//!
-//! Comments carry what the code and the names cannot: a choice whose alternative looks
-//! obvious, or a change that would break something non-local. Everything else is left
-//! to the signature.
+//! Everything here is headless. Rendering, argument parsing and the `--pick` menu live
+//! in the `pcmp` binary, so nothing in this crate can decide to write to a terminal.
 
 #![forbid(unsafe_code)]
-#![warn(clippy::all)]
+#![warn(clippy::all, missing_docs)]
 
 pub mod diag;
 pub mod digest;
@@ -38,7 +30,7 @@ pub use engine::{Engine, Outcome, Report};
 pub use error::{Error, ExitCode, Result};
 pub use manifest::Manifest;
 pub use path::AbsPath;
-pub use plan::{Graph, Task};
+pub use plan::{Graph, Overrides, Task};
 
 /// Returns the darklua version this binary is linked against.
 ///

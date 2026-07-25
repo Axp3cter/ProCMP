@@ -4,30 +4,28 @@ description: What counts as a build input, and how the cache knows.
 
 # Inputs
 
-A task is skipped when nothing it reads has changed. That answer is only as good as the
-set of files ProCMP considers, so the set is derived from the plan rather than guessed
-at from directory names.
+A task is skipped when nothing it reads has changed. The set of files that answer
+depends on is derived from the plan, not guessed at from directory names.
 
 ## What is hashed
 
 Every file under every root, whatever its extension.
 
 <table><thead><tr><th width="200">Root</th><th></th></tr></thead><tbody>
-<tr><td>The manifest's directory</td><td>Always.</td></tr>
-<tr><td><code>sources</code></td><td>Anything else the build reads.</td></tr>
+<tr><td>The manifest's directory</td><td>Always</td></tr>
+<tr><td><code>sources</code></td><td>Anything else the build reads</td></tr>
 </tbody></table>
 
 There is no extension allowlist. A content [loader](manifest.md#loaders) can make a
-`.json`, a `.md` or a `.png` a real build input, and a build tool that only watched
-`.luau` would hand you a stale artifact after you edited one.
+`.json` or a `.png` a real build input.
 
 ## What is not
 
 <table><thead><tr><th width="200"></th><th></th></tr></thead><tbody>
-<tr><td>Every task's <code>output</code></td><td>Taken from the plan. A build that hashed its own artifacts would invalidate the next one.</td></tr>
-<tr><td>The cache directory</td><td><code>.pcmp/</code>, or wherever <code>--cache-dir</code> points.</td></tr>
-<tr><td><code>.git</code></td><td>Never an input, and it changes on every commit.</td></tr>
-<tr><td><code>ignore</code></td><td>Yours.</td></tr>
+<tr><td>Every task's <code>output</code></td><td>Taken from the plan. A build that hashed its own artifacts would invalidate the next one</td></tr>
+<tr><td>The cache directory</td><td><code>.pcmp/</code>, or wherever <code>--cache-dir</code> points</td></tr>
+<tr><td><code>.git</code></td><td>Never an input, and it changes on every commit</td></tr>
+<tr><td><code>ignore</code></td><td>Yours</td></tr>
 </tbody></table>
 
 Nothing else is assumed. `dist`, `build`, `node_modules` and `target` are not special
@@ -44,8 +42,8 @@ base = {
 },
 ```
 
-Editing `../shared` now invalidates the cache and wakes `pcmp watch`. A root nested
-inside another is folded into the outer one, so listing both costs nothing.
+Editing `../shared` invalidates the cache and wakes `pcmp watch`. A root nested inside
+another is folded into the outer one.
 
 ## Skipping a vendored tree
 
@@ -82,11 +80,9 @@ Useful for a read-only checkout, or for sharing one cache across several worktre
 
 ## What the key covers
 
-A task rebuilds when any of these changes: its resolved configuration, the fingerprint
-of every input above, or the darklua version linked into the binary. The last one
-matters because the same manifest can legitimately produce different bytes against a
-different darklua.
+Resolved configuration, the fingerprint of every input above, and the darklua version
+linked into the binary. The last matters because the same manifest can produce different
+bytes against a different darklua.
 
-Whole-set hashing means editing one file rebuilds every task, which is the safe
-direction: darklua follows requires, so a per-task input list would have to guess at
-what a module pulls in.
+Editing one file rebuilds every task. darklua follows requires, so a per-task input list
+would have to guess at what a module pulls in.

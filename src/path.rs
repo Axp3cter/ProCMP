@@ -55,6 +55,10 @@ impl AbsPath {
 
     /// The only place the crate reads the process working directory. Everywhere else
     /// takes a root explicitly.
+    ///
+    /// # Errors
+    ///
+    /// When the working directory is unreadable or is not UTF-8.
     pub fn cwd() -> Result<Self> {
         let cwd = std::env::current_dir().map_err(|e| Error::Cwd(e.to_string()))?;
         let cwd = Utf8PathBuf::from_path_buf(cwd)
@@ -62,25 +66,32 @@ impl AbsPath {
         Self::new(cwd)
     }
 
+    /// The containing directory, or [`None`] at the filesystem root.
     pub fn parent(&self) -> Option<Self> {
         self.0.parent().map(|p| Self(p.to_owned()))
     }
 
+    /// The final component, or [`None`] at the filesystem root.
     pub fn file_name(&self) -> Option<&str> {
         self.0.file_name()
     }
 
+    /// The extension of the final component, without its dot.
     pub fn extension(&self) -> Option<&str> {
         self.0.extension()
     }
 
     /// Renders relative to `base`, falling back to the absolute form when not under it.
-    /// This feeds diagnostics, where a longer path beats a missing message.
+    ///
+    /// This feeds diagnostics, where a longer path beats a missing message, and hasher
+    /// labels, where an empty one would be indistinguishable from an absent field. A
+    /// path equal to its base renders as `.` rather than as nothing.
     pub fn relative_to(&self, base: &AbsPath) -> String {
-        self.0
-            .strip_prefix(&base.0)
-            .map(|p| p.to_string())
-            .unwrap_or_else(|_| self.0.to_string())
+        match self.0.strip_prefix(&base.0) {
+            Ok(relative) if relative.as_str().is_empty() => ".".to_owned(),
+            Ok(relative) => relative.to_string(),
+            Err(_) => self.0.to_string(),
+        }
     }
 
     /// Borrows as a [`std::path::Path`], for `std::fs` and darklua.
@@ -88,25 +99,36 @@ impl AbsPath {
         self.0.as_std_path()
     }
 
+    /// Borrows as a string, which is always valid UTF-8 here.
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 
+    /// Whether a regular file exists at this path. Touches disk.
     pub fn is_file(&self) -> bool {
         self.0.as_std_path().is_file()
     }
 
+    /// Whether a directory exists at this path. Touches disk.
     pub fn is_dir(&self) -> bool {
         self.0.as_std_path().is_dir()
     }
 
+    /// Whether anything exists at this path. Touches disk.
     pub fn exists(&self) -> bool {
         self.0.as_std_path().exists()
     }
 
-    /// Whether this path sits inside `base`. Lexical, like everything else here.
+    /// Whether this path is `base` or sits inside it. Lexical, like everything else.
+    ///
+    /// Component-wise rather than textual, so `/a/bc` is not under `/a/b`.
     pub fn is_under(&self, base: &AbsPath) -> bool {
         self.0.starts_with(&base.0)
+    }
+
+    /// Whether this path sits strictly inside `base`.
+    pub fn is_within(&self, base: &AbsPath) -> bool {
+        self != base && self.is_under(base)
     }
 }
 

@@ -3,16 +3,26 @@
 #![forbid(unsafe_code)]
 #![warn(clippy::all)]
 
+mod pick;
+
 use clap::{Parser, Subcommand, ValueEnum};
 use procmp::diag::{self, Diag, Severity};
 use procmp::error::{Error, ExitCode, Result};
-use procmp::plan::Overrides;
-use procmp::{AbsPath, Engine, Graph, Outcome, engine, init, lint, load, plan, schema, watch};
+use procmp::{
+    AbsPath, Engine, Graph, Outcome, Overrides, engine, init, lint, load, plan, schema, watch,
+};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "pcmp",
     version,
+    // Built at compile time from the same lockfile `build.rs` read, so it cannot
+    // disagree with the version mixed into cache keys.
+    long_version = concat!(
+        env!("CARGO_PKG_VERSION"),
+        "\ndarklua ",
+        env!("DARKLUA_VERSION")
+    ),
     about = "Multi-target build composition for Luau projects"
 )]
 struct Cli {
@@ -57,8 +67,11 @@ enum Command {
 
     /// Build every task, or those matching a pattern.
     Build {
-        /// Task or profile names. Globs are accepted. All when omitted.
+        /// Task or profile names. `*` is accepted. All when omitted.
         tasks: Vec<String>,
+        /// Choose from a list instead. Needs a terminal.
+        #[arg(long)]
+        pick: bool,
         /// Ignore cached state.
         #[arg(long)]
         no_cache: bool,
@@ -72,7 +85,13 @@ enum Command {
     },
 
     /// Print the darklua configuration a task compiles down to.
-    Explain { task: String },
+    Explain {
+        /// Task name. Required unless `--pick` is given.
+        task: Option<String>,
+        /// Choose from a list instead. Needs a terminal.
+        #[arg(long)]
+        pick: bool,
+    },
 
     /// Emit the manifest schema.
     Schema {
@@ -85,11 +104,14 @@ enum Command {
 
     /// Rebuild whenever an input or the manifest changes.
     Watch {
-        /// Task or profile names. Globs are accepted. All when omitted.
+        /// Task or profile names. `*` is accepted. All when omitted.
         tasks: Vec<String>,
+        /// Choose from a list instead. Needs a terminal.
+        #[arg(long)]
+        pick: bool,
     },
 
-    /// Write a starter manifest and type definitions.
+    /// Write a starter manifest and its schema.
     Init {
         /// Project name. Defaults to the directory name.
         #[arg(long)]
@@ -97,6 +119,9 @@ enum Command {
         /// Entry point. Detected from common locations when omitted.
         #[arg(long)]
         entry: Option<String>,
+        /// Manifest format to scaffold.
+        #[arg(long, value_enum, default_value_t = init::Format::Json5)]
+        format: init::Format,
     },
 }
 
@@ -148,11 +173,15 @@ fn run(cli: &Cli) -> Result<ExitCode> {
             );
             return Ok(ExitCode::Success);
         }
-        Command::Init { name, entry } => {
+        Command::Init {
+            name,
+            entry,
+            format,
+        } => {
             let name = name
                 .clone()
                 .unwrap_or_else(|| cwd.file_name().unwrap_or("project").to_owned());
-            let created = init::run(&cwd, &name, entry.as_deref())?;
+            let created = init::run(&cwd, &name, entry.as_deref(), *format)?;
 
             outln!("created  {}", created.manifest.relative_to(&cwd));
             outln!("created  {}", created.definitions.relative_to(&cwd));
@@ -174,7 +203,7 @@ fn run(cli: &Cli) -> Result<ExitCode> {
     let loaded = load::load(&path, &env)?;
     let cache = match cli.cache_dir.as_deref() {
         Some(dir) => cwd.join(dir)?,
-        None => Engine::default_cache(&loaded.root)?,
+        None => loaded.root.join(engine::CACHE_DIR)?,
     };
     let resolution = plan::resolve(&loaded.manifest, &loaded.root, &overrides);
 
@@ -203,22 +232,35 @@ fn run(cli: &Cli) -> Result<ExitCode> {
             })
         }
 
-        Command::Explain { task } => {
-            let task = graph
-                .get(task)
-                .ok_or_else(|| Error::NoSuchTask(task.clone(), graph.ids()))?;
+        Command::Explain { task, pick } => {
+            let task = match (task, pick) {
+                (_, true) => match pick::tasks(&graph, &loaded.root, "explain", pick::Mode::One)? {
+                    Some(indices) => &graph.tasks[indices[0]],
+                    None => return Ok(ExitCode::Success),
+                },
+                (Some(name), false) => graph
+                    .get(name)
+                    .ok_or_else(|| Error::NoSuchTask(name.clone(), graph.known()))?,
+                (None, false) => return Err(Error::NoTaskGiven(graph.known())),
+            };
             print_explain(task, &loaded.root, cli.json);
             Ok(ExitCode::Success)
         }
 
-        Command::Build { tasks, no_cache } => {
-            let selected = select(&graph, tasks)?;
+        Command::Build {
+            tasks,
+            pick,
+            no_cache,
+        } => {
+            let Some(selected) = choose(&graph, tasks, *pick, &loaded.root, "build")? else {
+                return Ok(ExitCode::Success);
+            };
             let report = Engine::new(loaded.root.clone(), cache)
                 .cached(!no_cache)
                 .run(&selected)?;
 
             print_build(&report, cli.json);
-            Ok(if report.ok() {
+            Ok(if report.succeeded() {
                 ExitCode::Success
             } else {
                 ExitCode::Build
@@ -244,8 +286,14 @@ fn run(cli: &Cli) -> Result<ExitCode> {
                 .map(|((id, _), _)| *id)
                 .collect();
 
-            print_verify(&differing, graph.len(), cli.json);
-            Ok(if differing.is_empty() {
+            let result = Reproducibility {
+                differing,
+                total: graph.len(),
+            };
+            let reproducible = result.differing.is_empty();
+
+            print_verify(&result, cli.json);
+            Ok(if reproducible {
                 ExitCode::Success
             } else {
                 ExitCode::Build
@@ -255,12 +303,18 @@ fn run(cli: &Cli) -> Result<ExitCode> {
         // Watching re-reads the manifest each cycle, so a manifest edit takes effect
         // without a restart. That includes one that breaks it, which is reported and
         // waited on rather than ending the session.
-        Command::Watch { tasks } => {
-            let scope = engine::Scope::of(&select(&graph, tasks)?, &cache)?;
+        Command::Watch { tasks, pick } => {
+            let Some(selected) = choose(&graph, tasks, *pick, &loaded.root, "watch")? else {
+                return Ok(ExitCode::Success);
+            };
+
+            // Resolved once here so a picked set survives the manifest being re-read.
+            let names: Vec<String> = selected.tasks.iter().map(|t| t.id.clone()).collect();
+            let scope = engine::Scope::of(&selected, &cache)?;
             let json = cli.json;
 
             watch::run(&scope, &path, || {
-                match rebuild(&path, &cache, tasks, json, &env, &overrides) {
+                match rebuild(&path, &cache, &names, json, &env, &overrides) {
                     Ok(()) => {}
                     Err(error) => eprintln!("error: {error}"),
                 }
@@ -277,7 +331,7 @@ fn run(cli: &Cli) -> Result<ExitCode> {
 fn rebuild(
     manifest: &AbsPath,
     cache: &AbsPath,
-    filter: &[String],
+    selectors: &[String],
     json: bool,
     env: &load::Env,
     overrides: &Overrides,
@@ -290,7 +344,8 @@ fn rebuild(
         return Ok(());
     };
 
-    let report = Engine::new(loaded.root.clone(), cache.clone()).run(&select(&graph, filter)?)?;
+    let report =
+        Engine::new(loaded.root.clone(), cache.clone()).run(&select(&graph, selectors)?)?;
     print_build(&report, json);
     Ok(())
 }
@@ -305,7 +360,7 @@ fn pass<'g>(
 ) -> Result<Option<Vec<(&'g str, String)>>> {
     let report = engine.run(graph)?;
 
-    if !report.ok() {
+    if !report.succeeded() {
         print_build(&report, json);
         return Ok(None);
     }
@@ -336,6 +391,30 @@ fn fingerprints(graph: &Graph) -> Result<Vec<(&str, String)>> {
         .collect()
 }
 
+/// Applies `--pick` when given, otherwise the names on the command line.
+///
+/// [`None`] when the picker was cancelled, which is an ordinary exit rather than an
+/// error: the user asked to choose and chose nothing.
+fn choose(
+    graph: &Graph,
+    selectors: &[String],
+    pick: bool,
+    root: &AbsPath,
+    title: &str,
+) -> Result<Option<Graph>> {
+    if !pick {
+        return select(graph, selectors).map(Some);
+    }
+
+    let Some(indices) = pick::tasks(graph, root, title, pick::Mode::Many)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(Graph {
+        tasks: indices.iter().map(|at| graph.tasks[*at].clone()).collect(),
+    }))
+}
+
 /// Selects tasks by identifier or profile name, with `*` standing for any run of
 /// characters.
 ///
@@ -345,8 +424,8 @@ fn fingerprints(graph: &Graph) -> Result<Vec<(&str, String)>> {
 ///
 /// An empty selection is an error rather than a no-op, so a mistyped name in CI cannot
 /// pass as a successful build.
-fn select(graph: &Graph, filter: &[String]) -> Result<Graph> {
-    if filter.is_empty() {
+fn select(graph: &Graph, selectors: &[String]) -> Result<Graph> {
+    if selectors.is_empty() {
         return Ok(graph.clone());
     }
 
@@ -354,45 +433,59 @@ fn select(graph: &Graph, filter: &[String]) -> Result<Graph> {
         .tasks
         .iter()
         .filter(|task| {
-            filter
+            selectors
                 .iter()
-                .any(|p| matches(p, &task.id) || matches(p, &task.profile))
+                .any(|s| matches(s, &task.id) || matches(s, &task.profile))
         })
         .cloned()
         .collect();
 
     if tasks.is_empty() {
-        return Err(Error::NoSuchTask(filter.join(", "), graph.ids()));
+        return Err(Error::NoSuchTask(selectors.join(", "), graph.known()));
     }
 
     Ok(Graph { tasks })
 }
 
 /// Whether `text` matches `pattern`, where `*` matches any run of characters.
+///
+/// The pattern splits into literals that must appear in order: the first anchored to
+/// the start, the last to the end, the rest anywhere between. A pattern with no `*` is
+/// one literal anchored at both ends, which is an exact match.
 fn matches(pattern: &str, text: &str) -> bool {
-    let mut parts = pattern.split('*');
+    let literals: Vec<&str> = pattern.split('*').collect();
 
-    let Some(first) = parts.next() else {
-        return true;
-    };
-    let Some(mut rest) = text.strip_prefix(first) else {
+    let (Some(first), Some(last)) = (literals.first(), literals.last()) else {
         return false;
     };
 
-    // Without a `*` the pattern was one literal, and has to have consumed everything.
-    let Some(last) = pattern.rsplit('*').next().filter(|_| pattern.contains('*')) else {
-        return rest.is_empty();
+    let Some(rest) = text.strip_prefix(first) else {
+        return false;
     };
-
-    let middles: Vec<&str> = parts.collect();
-    for part in &middles[..middles.len().saturating_sub(1)] {
-        let Some(at) = rest.find(part) else {
-            return false;
-        };
-        rest = &rest[at + part.len()..];
+    if literals.len() == 1 {
+        return rest.is_empty();
     }
 
-    rest.len() >= last.len() && rest.ends_with(last)
+    // The tail is claimed before the middles are searched, so neither can consume the
+    // characters the other needs.
+    let Some(mut rest) = rest.strip_suffix(last) else {
+        return false;
+    };
+
+    for middle in &literals[1..literals.len() - 1] {
+        let Some(at) = rest.find(middle) else {
+            return false;
+        };
+        rest = &rest[at + middle.len()..];
+    }
+
+    true
+}
+
+/// What two builds of the same graph agreed on.
+struct Reproducibility<'g> {
+    differing: Vec<&'g str>,
+    total: usize,
 }
 
 // ── rendering ───────────────────────────────────────────────────────────────────
@@ -551,14 +644,13 @@ fn print_diags(diags: &[Diag], json: bool) {
         outln!();
     }
 
-    outln!(
-        "{} error(s), {} warning(s)",
-        diag::count(diags, Severity::Deny),
-        diag::count(diags, Severity::Warn)
-    );
+    let (errors, warnings) = diag::tally(diags);
+    outln!("{errors} error(s), {warnings} warning(s)");
 }
 
-fn print_verify(differing: &[&str], total: usize, json: bool) {
+fn print_verify(result: &Reproducibility<'_>, json: bool) {
+    let Reproducibility { differing, total } = result;
+
     if json {
         return emit(&serde_json::json!({
             "reproducible": differing.is_empty(),

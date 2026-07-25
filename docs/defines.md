@@ -58,38 +58,25 @@ replace at build time. It would read a real table at runtime, and the branch wou
 
 Values are injected as AST nodes, so they participate in constant folding.
 
-{% tabs %}
-{% tab title="Source" %}
+{% code title="src/init.luau" %}
 ```lua
 local VERSION: string = PCMP_VERSION
 
 if DEBUG then
 	print("verbose telemetry")
-	print("second debug line")
 end
 
 return { version = VERSION }
 ```
-{% endtab %}
+{% endcode %}
 
-{% tab title="DEBUG = false" %}
+{% code title="dist/app.luau, DEBUG = false" %}
 ```lua
 local a='v1.0.0'return{version=a}
 ```
+{% endcode %}
 
-The branch is gone, not `if false then`, and not left to the Luau optimiser. Code that
-is not shipped cannot be read out of your artifact.
-{% endtab %}
-
-{% tab title="DEBUG = true" %}
-```lua
-local a='v1.0.0'do print('verbose telemetry')print('second debug line')end
-return{version=a}
-```
-
-The condition folded to a bare block, so nothing is tested at runtime.
-{% endtab %}
-{% endtabs %}
+The branch is gone, not `if false then`, and not left to the Luau optimiser.
 
 This needs `compute_expression` to fold the condition and `remove_unused_if_branch` to
 drop the branch, in that order. Without them the value is still injected, but the branch

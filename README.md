@@ -10,58 +10,41 @@
 
 ---
 
-One source tree, many artifacts. A minified release, a readable debug build, a Roblox
-variant, a Lune variant, all from one manifest.
-
-[darklua](https://darklua.com) is linked in as a library, so `pcmp` is a single static
-binary with nothing to install alongside it and no version to keep in sync.
+[darklua](https://darklua.com) is linked in as a library, so `pcmp` is one static binary
+with nothing to install alongside it.
 
 ## Install
 
 ```sh
+rokit add Proton-Utilities/ProCMP pcmp
+aftman add Proton-Utilities/ProCMP pcmp
 cargo install --git https://github.com/Proton-Utilities/ProCMP
 ```
 
-Or download a binary from [releases](https://github.com/Proton-Utilities/ProCMP/releases).
+## Use
 
-## Manifest
+```json5
+// pcmp.json5
+{
+  $schema: "./pcmp.schema.json",
 
-```luau
-return {
-	vars = {
-		name    = "app",
-		version = pcmp.envOr("VERSION", "v0.0.0-dev"),
-	},
+  vars: {
+    name: "app",
+    version: "v0.0.0-dev",
+  },
 
-	profiles = {
-		base = {
-			abstract = true,
-			entry    = "src/init.luau",
-			output   = "dist/{profile}/{name}.luau",
-			darklua  = { bundle = { require_mode = "luau" } },
-		},
-
-		debug = {
-			extends = "base",
-			define  = { DEBUG = true },
-			darklua = { generator = "readable", rules = { "compute_expression" } },
-		},
-
-		release = {
-			extends = "base",
-			define  = { DEBUG = false },
-			darklua = {
-				generator = "dense",
-				rules     = {
-					"compute_expression",
-					"remove_unused_if_branch",
-					"remove_types",
-					"remove_comments",
-					"rename_variables",
-				},
-			},
-		},
-	},
+  profiles: {
+    release: {
+      entry: "src/init.luau",
+      output: "dist/{name}.luau",
+      define: { DEBUG: false },
+      darklua: {
+        generator: "dense",
+        bundle: { require_mode: "luau" },
+        rules: ["compute_expression", "remove_unused_if_branch"],
+      },
+    },
+  },
 }
 ```
 
@@ -73,38 +56,18 @@ pcmp watch    # rebuild on every change
 pcmp verify   # prove the output is reproducible
 ```
 
-JSON, JSONC, JSON5 and TOML manifests resolve to the same plan.
+`pcmp init` writes that file and its schema. Luau, JSON, JSONC and TOML manifests
+resolve to the same plan, and `pcmp init --format luau` scaffolds the Luau one.
 
-## Defines are removed, not disabled
+`define` values are injected as AST nodes, so `if _G.DEBUG then` folds away and the
+branch is gone from the artifact.
 
-```luau
-if _G.DEBUG then
-	print("verbose telemetry")
-end
-```
-
-In a release build that is not `if false then`. The value is injected as an AST node, so
-the condition folds and the branch is **gone from the artifact**.
-
-## Design
-
-**The `darklua` block is darklua's config, verbatim.** No rule names of our own, no
-presets, no reordering. Nothing the linked darklua supports is out of reach, and
-`pcmp explain` prints the exact `.darklua.json` a task compiles to.
-
-**Inputs are derived, not guessed.** The hashed set comes from the plan: every file
-under your roots, minus your outputs and the cache. No extension allowlist, so a `.json`
-asset behind a content loader invalidates the build that reads it.
-
-**Findings accumulate.** Four mistakes report four, each with a stable code and a fix.
-
-**Reproducible by construction.** `pcmp verify` builds twice and byte-compares, so
-nondeterminism fails CI instead of reaching a release.
+The `darklua` block is darklua's own configuration, deserialised by darklua. `pcmp
+explain` prints what a task compiles to, which is a valid `.darklua.json`.
 
 ## Documentation
 
-[Installation, concepts, manifest reference, CLI reference, and the full diagnostic
-catalogue](https://github.com/Proton-Utilities/ProCMP/tree/main/docs).
+[docs/](https://github.com/Proton-Utilities/ProCMP/tree/main/docs)
 
 ## License
 

@@ -37,27 +37,14 @@ darklua = {
 [darklua configuration reference](https://darklua.com/docs/config/)
 {% endcontent-ref %}
 
-A key darklua does not know is an error carrying darklua's own message and the JSON that
-was emitted:
-
-```
-$ pcmp build
-  FAILED  a  dist/a.luau  (0 ms)
-          task `a` emitted a darklua configuration darklua rejected
-            unknown field `nonsense`
-          {
-            "nonsense": true,
-            "rules": [
-```
-
 ## Rules
 
 Three ways to say it, and they mean three different things:
 
 <table><thead><tr><th width="200"></th><th></th></tr></thead><tbody>
-<tr><td><code>rules</code> omitted</td><td>darklua applies its own default rules.</td></tr>
-<tr><td><code>rules = {}</code></td><td>No rules. Bundle and generate, transform nothing.</td></tr>
-<tr><td><code>rules = { a, b, c }</code></td><td>Exactly these, in this order.</td></tr>
+<tr><td><code>rules</code> omitted</td><td>darklua applies its own default rules</td></tr>
+<tr><td><code>rules = {}</code></td><td>No rules. Bundle and generate, transform nothing</td></tr>
+<tr><td><code>rules = { a, b, c }</code></td><td>Exactly these, in this order</td></tr>
 </tbody></table>
 
 ```
@@ -101,13 +88,8 @@ darklua configuration
   }
 ```
 
-That block is valid `.darklua.json`. Paste it into a config file and darklua on its own
-produces the same artifact.
-
-{% hint style="info" %}
-Keys come out sorted. A Luau table iterates in hash order, so an unsorted block would
-serialise differently on each run and give the same configuration two cache keys.
-{% endhint %}
+That block is valid `.darklua.json`, and its keys come out sorted so the same
+configuration never gets two cache keys.
 
 ## Order is reported, not corrected
 
@@ -121,37 +103,14 @@ error  branch-before-fold: task `release`: `remove_unused_if_branch` runs before
        help:   a branch is only removable once its condition has folded to a constant
 ```
 
-darklua's own default rule list is a valid ordering. A lint stricter than the tool it
-lints for would reject working manifests, so there are only these two.
-
-{% hint style="info" %}
-A rule listed twice is not a finding. Running a pass again after an earlier rule has
-exposed new foldable code is a technique, not a mistake.
-{% endhint %}
+darklua's own default rule list is a valid ordering, so a lint stricter than the tool it
+lints for would reject working manifests. A rule listed twice is not a finding either,
+because running a pass again after an earlier rule has exposed new foldable code is a
+technique.
 
 ## Headers
 
 `remove_comments` strips Luau directives along with everything else, and the `dense` and
 `readable` generators discard comments regardless. Headers are therefore written by
-ProCMP after darklua finishes, so nothing downstream can remove them.
-
-{% code title="pcmp.luau" %}
-```lua
-header = {
-	"--!native",
-	"--!optimize 2",
-	"-- {name} {version}, generated, do not edit",
-},
-```
-{% endcode %}
-
-{% code title="dist/release/app.luau" %}
-```lua
---!native
---!optimize 2
--- app v0.0.0-dev, generated, do not edit
-local a={}a.size=16 return a
-```
-{% endcode %}
-
-Tokens are expanded. With a directory `output` every generated file gets the header.
+ProCMP after darklua finishes, so nothing downstream can remove them. That is what the
+`header` field on a profile is for. See [Manifest](manifest.md).

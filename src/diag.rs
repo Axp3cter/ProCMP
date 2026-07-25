@@ -15,7 +15,9 @@ pub enum Severity {
 pub struct Diag {
     /// Stable name such as `fold-before-inject`, never reused for another meaning.
     pub code: &'static str,
+    /// Whether the plan survives this finding.
     pub severity: Severity,
+    /// What is wrong, naming the profile, task or rule it concerns.
     pub message: String,
     /// What to do about it, one `help:` line per line.
     pub help: Option<String>,
@@ -42,9 +44,14 @@ impl Diag {
         }
     }
 
+    /// Adds a `help:` line. Called twice, both lines survive.
     #[must_use]
     pub fn help(mut self, help: impl Into<String>) -> Self {
-        self.help = Some(help.into());
+        let line = help.into();
+        self.help = Some(match self.help {
+            Some(existing) => format!("{existing}\n{line}"),
+            None => line,
+        });
         self
     }
 }
@@ -62,10 +69,17 @@ pub fn sort(diags: &mut [Diag]) {
     });
 }
 
+/// The most serious severity present, or [`None`] when there are no findings.
 pub fn worst(diags: &[Diag]) -> Option<Severity> {
     diags.iter().map(|d| d.severity).max()
 }
 
-pub fn count(diags: &[Diag], severity: Severity) -> usize {
-    diags.iter().filter(|d| d.severity == severity).count()
+/// Errors and warnings, in that order, from one walk.
+pub fn tally(diags: &[Diag]) -> (usize, usize) {
+    diags
+        .iter()
+        .fold((0, 0), |(deny, warn), diag| match diag.severity {
+            Severity::Deny => (deny + 1, warn),
+            Severity::Warn => (deny, warn + 1),
+        })
 }

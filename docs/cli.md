@@ -9,16 +9,16 @@ pcmp [OPTIONS] <COMMAND>
 ```
 
 <table><thead><tr><th width="270">Global flag</th><th></th></tr></thead><tbody>
-<tr><td><code>-m</code>, <code>--manifest &#60;PATH&#62;</code></td><td>Manifest to use. Discovered otherwise.</td></tr>
-<tr><td><code>--cache-dir &#60;PATH&#62;</code></td><td>Where build state is kept. Defaults to <code>.pcmp/</code> beside the manifest.</td></tr>
-<tr><td><code>--var &#60;KEY=VALUE&#62;</code></td><td>Set a token. Repeatable. Beats the manifest.</td></tr>
-<tr><td><code>-D</code>, <code>--define &#60;KEY=VALUE&#62;</code></td><td>Set a constant. Repeatable. Beats the manifest.</td></tr>
-<tr><td><code>-e</code>, <code>--env &#60;KEY=VALUE&#62;</code></td><td>A value for <code>pcmp.env</code>, ahead of the process environment. Repeatable.</td></tr>
-<tr><td><code>--json</code></td><td>Machine-readable output. Works on every command.</td></tr>
+<tr><td><code>-m</code>, <code>--manifest &#60;PATH&#62;</code></td><td>Manifest to use. Discovered otherwise</td></tr>
+<tr><td><code>--cache-dir &#60;PATH&#62;</code></td><td>Where build state is kept. Defaults to <code>.pcmp/</code> beside the manifest</td></tr>
+<tr><td><code>-e</code>, <code>--env &#60;KEY=VALUE&#62;</code></td><td>A value for <code>pcmp.env</code>, ahead of the process environment. Repeatable</td></tr>
+<tr><td><code>--var &#60;KEY=VALUE&#62;</code></td><td>Set a token. Repeatable. Beats the manifest</td></tr>
+<tr><td><code>-D</code>, <code>--define &#60;KEY=VALUE&#62;</code></td><td>Set a constant. Repeatable. Beats the manifest</td></tr>
+<tr><td><code>--json</code></td><td>Machine-readable output. Works on every command</td></tr>
 </tbody></table>
 
-Discovery looks for `pcmp.luau`, `pcmp.json`, `pcmp.jsonc`, `pcmp.json5` then
-`pcmp.toml`, in the working directory and then each of its ancestors, so `pcmp` works
+Discovery looks for `pcmp.json5`, `pcmp.json`, `pcmp.jsonc`, `pcmp.toml` then
+`pcmp.luau`, in the working directory and then each of its ancestors, so `pcmp` works
 from anywhere inside a project.
 
 `--var` and `--define` apply after inheritance and work whatever the manifest format.
@@ -52,8 +52,29 @@ pcmp build release                 # one task or profile
 pcmp build debug release           # several
 pcmp build 'dist[target=roblox]'   # one matrix task, by exact identifier
 pcmp build '*target=roblox*'       # across a matrix axis
+pcmp build --pick                  # choose from a list
 pcmp build --no-cache              # rebuild regardless of cached state
 ```
+
+`--pick` opens a menu on stderr. Arrows move, enter chooses. Every action is a row, so
+there is no legend to read.
+
+```
+  build
+
+    [x] debug                          dist/debug/app.luau
+    [ ] release                        dist/release/app.luau
+    [x] dist[flavour=min,target=lune]  dist/lune/min.luau
+
+  > Select all
+    Select none
+    Continue with 2 selected
+    Cancel
+```
+
+It runs only when the flag is given and only when stdin and stderr are both terminals,
+so a script or a CI job is never asked a question it cannot answer. `explain --pick`
+shows the same menu without the bulk rows, since choosing a task is the confirmation.
 
 `*` stands for any run of characters and is the only wildcard. A matrix identifier
 contains `[`, `]` and `=`, which every glob dialect would read as syntax.
@@ -85,7 +106,7 @@ fails is reported as a build failure, not as a comparison that could not be made
 ## `watch [TASKS]`
 
 Builds, then rebuilds whenever an input or the manifest changes. Accepts the same
-patterns as `build`.
+selectors as `build`, including `--pick`.
 
 ```
 $ pcmp watch release
@@ -103,26 +124,28 @@ includes an edit that breaks it, which is reported and then waited on.
 
 ## `init`
 
-Writes `pcmp.luau` and `pcmp.d.luau`. Nothing else: no directories, no prompts, no
+Writes a manifest and its schema. Nothing else: no directories, no prompts, no
 `.gitignore` rewriting.
 
 ```
 $ pcmp init
-created  pcmp.luau
-created  pcmp.d.luau
+created  pcmp.json5
+created  pcmp.schema.json
 
 next     pcmp plan
 ```
+
+`--format luau` writes `pcmp.luau` and `pcmp.d.luau` instead.
 
 The entry point is detected from `src/init.luau`, `src/main.luau`, `init.luau` or
 `main.luau`. Pass `--entry` otherwise. It refuses to overwrite an existing manifest, so
 it is safe to run twice.
 
-## `explain <TASK>`
+## `explain [TASK]`
 
 Entry, output, digest, every var, every define with its type, and the darklua
 configuration the task compiles to. `--json` emits the task and that configuration
-together.
+together. `--pick` chooses the task from a list instead of naming it.
 
 ## `schema`
 
@@ -136,10 +159,10 @@ Needs no project, so run it anywhere. See [Install](install.md#editor-completion
 ## Exit codes
 
 <table><thead><tr><th width="90">Code</th><th></th></tr></thead><tbody>
-<tr><td><code>0</code></td><td>Success.</td></tr>
-<tr><td><code>1</code></td><td>A build task failed, or output was not reproducible.</td></tr>
-<tr><td><code>2</code></td><td>The manifest could not be loaded or resolved.</td></tr>
-<tr><td><code>5</code></td><td>Linting failed.</td></tr>
+<tr><td><code>0</code></td><td>Success</td></tr>
+<tr><td><code>1</code></td><td>A build task failed, or output was not reproducible</td></tr>
+<tr><td><code>2</code></td><td>The manifest could not be loaded or resolved</td></tr>
+<tr><td><code>5</code></td><td>Linting failed</td></tr>
 </tbody></table>
 
 ## Caching

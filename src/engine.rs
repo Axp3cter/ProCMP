@@ -19,6 +19,12 @@ use crate::plan::{Graph, Task};
 /// Version-control metadata: never a build input, and it changes on every commit.
 const VCS: &str = ".git";
 
+/// Extensions a header may be written to.
+///
+/// A directory output can hold anything a `copy` loader passed through, so prepending
+/// `--!native` to every file it produced would corrupt the images among them.
+const HEADABLE: &[&str] = &["luau", "lua"];
+
 /// What happened to one task.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase", tag = "status")]
@@ -43,9 +49,11 @@ pub enum Outcome {
 /// One task's result.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TaskReport {
+    /// Task identifier, matching [`crate::plan::Task::id`].
     pub task: String,
     /// Output path, relative to the project root.
     pub output: String,
+    /// What happened to it.
     pub outcome: Outcome,
     /// Wall-clock time spent on this task.
     pub millis: u128,
@@ -54,17 +62,20 @@ pub struct TaskReport {
 /// The result of one build, ordered by task identifier.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Report {
+    /// One entry per task, ordered by identifier.
     pub tasks: Vec<TaskReport>,
 }
 
 impl Report {
-    pub fn ok(&self) -> bool {
+    /// Whether every task produced or kept an artifact.
+    pub fn succeeded(&self) -> bool {
         !self
             .tasks
             .iter()
             .any(|t| matches!(t.outcome, Outcome::Failed { .. }))
     }
 
+    /// Built, cached and failed, in that order.
     pub fn counts(&self) -> (usize, usize, usize) {
         let mut built = 0;
         let mut cached = 0;
@@ -116,11 +127,7 @@ impl Scope {
         // A root nested inside another would hash its files twice under two different
         // relative names, so the shorter one wins.
         let outer = roots.clone();
-        roots.retain(|root| {
-            !outer
-                .iter()
-                .any(|other| other != root && root.is_under(other))
-        });
+        roots.retain(|root| !outer.iter().any(|other| root.is_within(other)));
 
         let ignore = patterns
             .into_iter()
@@ -138,21 +145,28 @@ impl Scope {
         })
     }
 
-    /// Whether a path is a build input rather than output, tool state or ignored.
+    /// Whether an event path is a build input rather than output, state or ignored.
+    ///
+    /// A path that is not UTF-8 is not one of ours: every root came from an
+    /// [`AbsPath`], so anything unrepresentable is outside the project by construction.
     pub fn contains(&self, path: &std::path::Path) -> bool {
-        let Ok(path) = AbsPath::new(path.to_string_lossy().as_ref()) else {
+        let Some(text) = path.to_str() else {
+            return false;
+        };
+        let Ok(path) = AbsPath::new(text) else {
             return false;
         };
 
+        self.holds(&path)
+    }
+
+    /// The same question against a path already parsed, which is what the walk has.
+    fn holds(&self, path: &AbsPath) -> bool {
         let Some(root) = self.roots.iter().find(|root| path.is_under(root)) else {
             return false;
         };
 
-        if self
-            .excluded
-            .iter()
-            .any(|excluded| path.is_under(excluded) || path == *excluded)
-        {
+        if self.excluded.iter().any(|excluded| path.is_under(excluded)) {
             return false;
         }
 
@@ -170,7 +184,7 @@ impl Scope {
     /// Hashes every input, sorted, so filesystems that enumerate differently agree.
     ///
     /// A root that does not exist contributes nothing rather than failing. A missing
-    /// entry point is reported per task, with its path
+    /// entry point is reported per task, with its path.
     pub fn fingerprint(&self) -> Result<Digest> {
         let mut entries: BTreeMap<String, Digest> = BTreeMap::new();
 
@@ -205,7 +219,7 @@ impl Scope {
             let name = entry.file_name().to_string_lossy().into_owned();
 
             let Ok(path) = dir.join(&name) else { continue };
-            if !self.contains(path.as_std()) {
+            if !self.holds(&path) {
                 continue;
             }
 
@@ -237,6 +251,9 @@ impl Scope {
     }
 }
 
+/// Where build state lives when `--cache-dir` is not given.
+pub const CACHE_DIR: &str = ".pcmp";
+
 /// Executes a build graph against the filesystem.
 #[derive(Debug)]
 pub struct Engine {
@@ -256,11 +273,6 @@ impl Engine {
         }
     }
 
-    /// The default cache location for a project: `.pcmp/` beside the manifest.
-    pub fn default_cache(root: &AbsPath) -> Result<AbsPath> {
-        root.join(".pcmp")
-    }
-
     #[must_use]
     /// Enables or disables cache reuse. Disabled is what `pcmp verify` needs.
     pub fn cached(mut self, enabled: bool) -> Self {
@@ -269,8 +281,12 @@ impl Engine {
     }
 
     /// Failures land in the report rather than returning early, so one broken profile
-    /// does not hide the rest. Only whole-run problems, such as an output collision,
-    /// return an error.
+    /// does not hide the rest.
+    ///
+    /// # Errors
+    ///
+    /// Only for whole-run problems: two tasks claiming one output, an unreadable input,
+    /// or an `ignore` entry that is not a valid glob.
     pub fn run(&self, graph: &Graph) -> Result<Report> {
         // Checked before any work starts. Two tasks writing one path would race, and
         // which one won would depend on thread scheduling.
@@ -278,9 +294,9 @@ impl Engine {
         for task in &graph.tasks {
             if let Some(first) = claimed.insert(task.output.as_str(), &task.id) {
                 return Err(Error::OutputCollision(
-                    task.output.to_string(),
                     first.to_owned(),
                     task.id.clone(),
+                    task.output.to_string(),
                 ));
             }
         }
@@ -373,18 +389,9 @@ impl Engine {
         // writes nothing, that is still not a build. A file filter that matches nothing
         // is by far the likeliest cause, and the silence is otherwise baffling.
         if !task.output.exists() {
-            let filtered = task.darklua.contains_key("apply_to_files")
-                || task.darklua.contains_key("skip_files");
-
             return Err(Error::NoOutput(
                 task.id.clone(),
                 task.output.relative_to(&self.root),
-                if filtered {
-                    "\n  `apply_to_files` and `skip_files` match each file's path relative to \
-                     the entry, so `src/**` matches nothing when the entry is `src/init.luau`"
-                } else {
-                    ""
-                },
             ));
         }
 
@@ -409,6 +416,10 @@ impl Engine {
         banner.push('\n');
 
         for artifact in artifacts(&task.output)? {
+            if !artifact.extension().is_some_and(|e| HEADABLE.contains(&e)) {
+                continue;
+            }
+
             let path = artifact.as_std();
             let body = std::fs::read_to_string(path)
                 .map_err(|e| Error::Read(artifact.to_string(), e.to_string()))?;
@@ -450,6 +461,10 @@ impl Engine {
 /// Every file an output covers: the file itself, or the tree beneath a directory.
 ///
 /// Sorted, so hashing a directory output is order-independent.
+///
+/// # Errors
+///
+/// When a directory under `output` cannot be read.
 pub fn artifacts(output: &AbsPath) -> Result<Vec<AbsPath>> {
     if output.is_file() {
         return Ok(vec![output.clone()]);

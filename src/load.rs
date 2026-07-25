@@ -6,23 +6,29 @@
 //! A Luau manifest is a program, and stays reproducible because the interpreter has
 //! nothing nondeterministic left in it. Luau's sandbox removes `os`, `io`, `load`,
 //! `dofile`, `debug` and `coroutine`, and [`REVOKED`] removes the rest. Its only
-//! channel outward is `pcmp.env`
+//! channel outward is `pcmp.env`.
 
-use mlua::{Lua, LuaOptions, LuaSerdeExt, StdLib, Value, VmState};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use mlua::{Lua, LuaOptions, LuaSerdeExt, StdLib, Value, VmState};
 
 use crate::error::{Error, Result};
 use crate::manifest::Manifest;
 use crate::path::AbsPath;
 
 /// Manifest file names, in discovery order.
+///
+/// JSON5 leads because it is what `pcmp init` writes: it is plain data, so any tool can
+/// read or rewrite it, and `$schema` gives an editor validation with no further setup.
+/// Luau comes last, and is the only format that can compute a value rather than be
+/// given one.
 pub const CANDIDATES: &[&str] = &[
-    "pcmp.luau",
+    "pcmp.json5",
     "pcmp.json",
     "pcmp.jsonc",
-    "pcmp.json5",
     "pcmp.toml",
+    "pcmp.luau",
 ];
 
 /// Globals that survive Luau's sandbox but would let a manifest observe the outside,
@@ -38,6 +44,12 @@ pub const REVOKED: &[&str] = &[
 
 /// Entropy inside libraries that are otherwise safe to keep.
 const REVOKED_MEMBERS: &[(&str, &str)] = &[("math", "random"), ("math", "randomseed")];
+
+/// Instruction budget, so a manifest that never terminates fails instead of hanging.
+const BUDGET: u64 = 50_000_000;
+
+/// Heap ceiling for the manifest interpreter.
+const MEMORY: usize = 32 * 1024 * 1024;
 
 /// What `pcmp.env` reads: values given with `--env`, then the process environment.
 ///
@@ -76,12 +88,6 @@ impl Env {
     }
 }
 
-/// Instruction budget, so a manifest that never terminates fails instead of hanging.
-const BUDGET: u64 = 50_000_000;
-
-/// Heap ceiling for the manifest interpreter.
-const MEMORY: usize = 32 * 1024 * 1024;
-
 /// A manifest front end, selected by file extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
@@ -94,6 +100,7 @@ pub enum Format {
 }
 
 impl Format {
+    /// The format an extension names, or [`None`] when it names none.
     pub fn from_extension(extension: &str) -> Option<Self> {
         match extension {
             "luau" => Some(Self::Luau),
@@ -107,6 +114,7 @@ impl Format {
 /// A parsed manifest and the paths it was read against.
 #[derive(Debug)]
 pub struct Loaded {
+    /// The parsed manifest, normalised.
     pub manifest: Manifest,
     /// Absolute path the manifest was read from.
     pub origin: AbsPath,
@@ -140,6 +148,11 @@ pub fn discover(directory: &AbsPath) -> Result<AbsPath> {
 }
 
 /// Reads and parses the manifest at `path`, resolving its project root.
+///
+/// # Errors
+///
+/// When the extension names no known format, the file cannot be read, or its contents
+/// do not match the manifest schema.
 pub fn load(path: &AbsPath, env: &Env) -> Result<Loaded> {
     let format = path
         .extension()
@@ -163,6 +176,10 @@ pub fn load(path: &AbsPath, env: &Env) -> Result<Loaded> {
 }
 
 /// Parses manifest text already in memory. `origin` is used only in messages.
+///
+/// # Errors
+///
+/// When the text is not valid in `format`, or does not match the manifest schema.
 pub fn parse(text: &str, origin: &str, format: Format, env: &Env) -> Result<Manifest> {
     let mut manifest = match format {
         Format::Luau => return eval(text, origin, env),
@@ -178,6 +195,11 @@ pub fn parse(text: &str, origin: &str, format: Format, env: &Env) -> Result<Mani
 }
 
 /// Evaluates a Luau manifest in a hardened interpreter.
+///
+/// # Errors
+///
+/// When the interpreter cannot be built, the program fails or exceeds its budget, or
+/// what it returns is not a table matching the manifest schema.
 pub fn eval(source: &str, origin: &str, env: &Env) -> Result<Manifest> {
     let vm = |action: &str, e: mlua::Error| {
         Error::Vm(origin.to_owned(), action.to_owned(), e.to_string())
@@ -198,9 +220,9 @@ pub fn eval(source: &str, origin: &str, env: &Env) -> Result<Manifest> {
     lua.set_memory_limit(MEMORY)
         .map_err(|e| vm("set the memory limit", e))?;
 
-    let steps = Arc::new(AtomicU64::new(0));
+    let steps = AtomicU64::new(0);
     lua.set_interrupt(move |_| {
-        if steps.fetch_add(1, Ordering::Relaxed) > BUDGET {
+        if steps.fetch_add(1, Ordering::Relaxed) >= BUDGET {
             return Err(mlua::Error::runtime(
                 "manifest exceeded its evaluation budget, so it must terminate",
             ));
@@ -259,9 +281,13 @@ fn install_api(lua: &Lua, origin: &str, env: &Env) -> Result<()> {
 
     let api = lua.create_table().map_err(|e| vm("create the api", e))?;
 
+    // One `Env` behind an `Arc` rather than a copy per closure: both read it and
+    // neither writes, and a manifest can hold a long list of overrides.
+    let shared = Arc::new(env.clone());
+
     // An error rather than an empty string, so a missing variable cannot become a
     // release stamped with nothing.
-    let read = env.clone();
+    let read = Arc::clone(&shared);
     let required = lua
         .create_function(move |_, name: String| {
             read.get(&name).ok_or_else(|| {
@@ -274,7 +300,7 @@ fn install_api(lua: &Lua, origin: &str, env: &Env) -> Result<()> {
         .map_err(|e| vm("create pcmp.env", e))?;
 
     // The fallback exists, but the manifest spells it out.
-    let read = env.clone();
+    let read = Arc::clone(&shared);
     let optional = lua
         .create_function(move |_, (name, fallback): (String, String)| {
             Ok(read.get(&name).unwrap_or(fallback))

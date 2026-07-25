@@ -10,7 +10,8 @@
 
 use std::collections::BTreeMap;
 
-use crate::diag::{self, Diag};
+use crate::diag::Diag;
+use crate::digest::{self, Digest};
 use crate::manifest::{Manifest, Rule};
 use crate::plan::{Graph, Task};
 use crate::rules;
@@ -56,6 +57,7 @@ const PIPELINE: &[Ordered] = &[
     },
 ];
 
+/// Every finding this module can produce, unsorted.
 pub fn run(manifest: &Manifest, graph: &Graph) -> Vec<Diag> {
     let mut diags = Vec::new();
 
@@ -65,7 +67,8 @@ pub fn run(manifest: &Manifest, graph: &Graph) -> Vec<Diag> {
     orphans(manifest, &mut diags);
     duplicates(manifest, &mut diags);
 
-    diag::sort(&mut diags);
+    // Left unsorted: `pcmp check` merges this with the resolver's findings and sorts
+    // once, so sorting here would only be thrown away.
     diags
 }
 
@@ -137,18 +140,23 @@ fn orphans(manifest: &Manifest, diags: &mut Vec<Diag>) {
 /// Compares declarations, not resolved tasks: every task carries its own injected
 /// `PCMP_PROFILE`, so no two are ever identical.
 fn duplicates(manifest: &Manifest, diags: &mut Vec<Diag>) {
-    let mut by_shape: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+    let mut by_shape: BTreeMap<Digest, Vec<&str>> = BTreeMap::new();
 
     for (name, profile) in &manifest.profiles {
+        // An abstract profile exists to be extended, so one that matches its own child
+        // is the intended shape rather than a duplicate.
+        if profile.is_abstract {
+            continue;
+        }
+
         let mut shape = profile.clone();
         // Two profiles differing only by where they write are the normal case, and so
         // are two differing only in the values their tokens carry.
         shape.output = None;
         shape.vars.clear();
 
-        if let Ok(rendered) = serde_json::to_string(&shape) {
-            by_shape.entry(rendered).or_default().push(name);
-        }
+        let rendered = serde_json::to_string(&shape).expect("a profile always serialises");
+        by_shape.entry(digest::of(rendered)).or_default().push(name);
     }
 
     for names in by_shape.into_values().filter(|n| n.len() > 1) {

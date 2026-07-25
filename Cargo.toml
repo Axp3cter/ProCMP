@@ -6,6 +6,14 @@ edition      = "2024"
 rust-version = "1.90"
 license      = "MIT"
 build        = "build.rs"
+readme       = "README.md"
+repository   = "https://github.com/Proton-Utilities/ProCMP"
+keywords     = ["luau", "darklua", "bundler", "roblox", "build"]
+categories   = ["command-line-utilities", "development-tools::build-utils"]
+
+# The crate is the tool. Documentation and CI belong in the repository, not in what
+# `cargo install` downloads.
+exclude      = ["docs/", ".github/", ".gitbook.yaml"]
 
 [lib]
 name = "procmp"
@@ -19,6 +27,7 @@ path = "src/main.rs"
 blake3                = "1"
 camino                = { version = "1", features = ["serde1"] }
 clap                  = { version = "4", features = ["derive", "wrap_help"] }
+crossterm             = "0.29"
 darklua               = "0.19"
 indexmap              = { version = "2", features = ["serde"] }
 json5                 = "1"
@@ -37,6 +46,12 @@ wax                   = "0.7"
 lto           = "thin"
 strip         = true
 codegen-units = 1
+
+# Dependencies are optimised even in a debug build. Nothing here is ours to step
+# through, and an unoptimised Luau interpreter and darklua make `cargo run` slow
+# enough to change how the tool feels while developing it.
+[profile.dev.package."*"]
+opt-level = 2
 
 # `panic = "abort"` is deliberately absent: mlua propagates a Lua error by unwinding
 # across the C boundary, and aborting turns an ordinary manifest mistake into a crash.
