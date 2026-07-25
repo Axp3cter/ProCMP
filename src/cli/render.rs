@@ -40,22 +40,32 @@ pub fn plan(graph: &Graph, root: &AbsPath, json: bool) {
         return outln("no tasks");
     }
 
-    let width = widest(graph.tasks.iter().map(|t| t.id.as_str()));
     outln(format!(
         "{} task(s), plan {}\n",
         graph.len(),
         graph.digest().short()
     ));
 
-    for task in &graph.tasks {
-        let rules = task.rules.as_ref().map_or_else(
-            || "darklua defaults".to_owned(),
-            |r| format!("{} rules", r.len()),
-        );
+    let rows: Vec<(&str, String, String)> = graph
+        .tasks
+        .iter()
+        .map(|task| {
+            let rules = task.rules.as_ref().map_or_else(
+                || "darklua defaults".to_owned(),
+                |r| format!("{} rules", r.len()),
+            );
+            (task.id.as_str(), task.output.relative_to(root), rules)
+        })
+        .collect();
+
+    let id = widest(rows.iter().map(|(id, _, _)| *id));
+    let output = widest(rows.iter().map(|(_, output, _)| output.as_str()));
+
+    for (task, artifact, rules) in &rows {
         outln(format!(
             "  {}  {}  {rules}",
-            pad(&task.id, width),
-            task.output.relative_to(root)
+            pad(task, id),
+            pad(artifact, output)
         ));
     }
 }
@@ -109,7 +119,8 @@ pub fn build(report: &Report, json: bool) {
         return emit(report);
     }
 
-    let width = widest(report.tasks.iter().map(|t| t.task.as_str()));
+    let id = widest(report.tasks.iter().map(|t| t.task.as_str()));
+    let output = widest(report.tasks.iter().map(|t| t.output.as_str()));
 
     for task in &report.tasks {
         let label = match &task.outcome {
@@ -119,8 +130,8 @@ pub fn build(report: &Report, json: bool) {
         };
         outln(format!(
             "  {label}  {}  {}  ({} ms)",
-            pad(&task.task, width),
-            task.output,
+            pad(&task.task, id),
+            pad(&task.output, output),
             task.millis
         ));
 

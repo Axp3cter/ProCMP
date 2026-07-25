@@ -4,28 +4,129 @@ description: Every field, in one annotated manifest.
 
 # Manifest
 
-`pcmp.json5`, `pcmp.json`, `pcmp.jsonc`, `pcmp.toml` and `pcmp.luau` all resolve to the
-same plan, and that is discovery order. Discovery starts in the working directory and
-walks up. Relative paths always resolve against the manifest's own directory.
+Discovery starts in the working directory and walks up, trying each name in turn:
 
-`pcmp init` writes JSON5. Luau is the only format that can compute a value, through
-[`pcmp.env`](#the-pcmp-api).
+```
+pcmp.json5   pcmp.json   pcmp.jsonc   pcmp.toml   pcmp.luau
+```
 
-Everything that configures a transformation lives under [`darklua`](darklua.md).
+Relative paths always resolve against the manifest's own directory, not the working
+directory.
+
+## One plan, whichever format
+
+These three resolve to byte-identical plans, digest and all:
+
+{% tabs %}
+{% tab title="pcmp.json5" %}
+```json5
+{
+  $schema: "./pcmp.schema.json",
+
+  vars: { name: "app", version: "v0.0.0-dev" },
+
+  profiles: {
+    release: {
+      entry: "src/init.luau",
+      output: "dist/{name}.luau",
+      define: { DEBUG: false },
+      darklua: {
+        generator: "dense",
+        rules: ["compute_expression", "remove_unused_if_branch"],
+      },
+    },
+  },
+}
+```
+{% endtab %}
+
+{% tab title="pcmp.toml" %}
+```toml
+[vars]
+name    = "app"
+version = "v0.0.0-dev"
+
+[profiles.release]
+entry  = "src/init.luau"
+output = "dist/{name}.luau"
+define = { DEBUG = false }
+
+[profiles.release.darklua]
+generator = "dense"
+rules     = ["compute_expression", "remove_unused_if_branch"]
+```
+{% endtab %}
+
+{% tab title="pcmp.luau" %}
+```lua
+return {
+	vars = {
+		name    = "app",
+		version = pcmp.envOr("VERSION", "v0.0.0-dev"),
+	},
+
+	profiles = {
+		release = {
+			entry   = "src/init.luau",
+			output  = "dist/{name}.luau",
+			define  = { DEBUG = false },
+			darklua = {
+				generator = "dense",
+				rules     = { "compute_expression", "remove_unused_if_branch" },
+			},
+		},
+	},
+}
+```
+{% endtab %}
+{% endtabs %}
+
+```
+$ pcmp -m pcmp.json5 plan
+1 task(s), plan c17e90d8cdc0
+
+$ pcmp -m pcmp.toml plan
+1 task(s), plan c17e90d8cdc0
+
+$ pcmp -m pcmp.luau plan
+1 task(s), plan c17e90d8cdc0
+```
+
+Luau is the only format that can compute a value rather than be given one, through
+[`pcmp.env`](#the-pcmp-api). Every map is sorted before resolution, so the hash order of
+a Luau table cannot reach the plan.
+
+## Profile fields
+
+Ten of ProCMP's own, plus [`darklua`](darklua.md), which is where everything that
+configures a transformation lives.
+
+| Field | |
+| --- | --- |
+| `abstract` | Never built. Exempt from `entry` and `output` |
+| `extends` | Name of a profile to inherit from |
+| `entry` | A file, or a directory processed as a tree |
+| `output` | Destination, with `{token}` expansion |
+| `sources` | Extra directories whose contents count as build inputs |
+| `ignore` | Globs excluded from that input set |
+| `vars` | Named strings. Each becomes a `{token}` and a `PCMP_<NAME>` constant |
+| `define` | Compile-time constants substituted into your source |
+| `header` | Lines written above each artifact after darklua runs |
+| `loaders` | Ordered `pattern` to `use` pairs |
+| `darklua` | darklua's own configuration, verbatim |
 
 {% code title="pcmp.json5" %}
 ```json5
 {
-  // Each becomes a {token} and a PCMP_<NAME> constant.
   vars: { name: "app", version: "v0.0.0-dev" },
 
   profiles: {
     base: {
-      abstract: true,                      // never built, exempt from entry and output
-      entry: "src/init.luau",              // a file, or a directory
+      abstract: true,
+      entry: "src/init.luau",
       output: "dist/{profile}/{name}.luau",
-      sources: ["../shared"],              // extra input roots
-      ignore: ["**/Packages/**"],          // excluded from the input set
+      sources: ["../shared"],
+      ignore: ["**/Packages/**"],
 
       darklua: {
         bundle: { require_mode: "luau" },
@@ -35,11 +136,8 @@ Everything that configures a transformation lives under [`darklua`](darklua.md).
     release: {
       extends: "base",
       define: { DEBUG: false, RETRIES: 3 },
-
-      // Written above each artifact after darklua runs, so it survives minification.
       header: ["--!native", "-- {name} {version}"],
 
-      // Ordered: darklua takes the first pattern that matches.
       loaders: [
         { pattern: "**/*.model.json", use: "copy" },
         { pattern: "**/*.json", use: "json" },
@@ -74,8 +172,8 @@ vars: { name: "app", channel: "stable" },   // {name}, PCMP_NAME
 define: { DEBUG: false, MAX_RETRY: 3 },     // DEBUG, MAX_RETRY
 ```
 
-Every var is also a define. A define can be a boolean or a number, so the reverse does
-not hold.
+Every var is also a define, uppercased and prefixed. The reverse does not hold, because
+a define can be a boolean or a number.
 
 ```lua
 if DEBUG then
@@ -85,11 +183,13 @@ end
 local channel: string = PCMP_CHANNEL
 ```
 
+A define is a boolean, a finite number, or a string. The type reaches the cache key, so
+`true` and `"true"` are different builds.
+
+{% hint style="warning" %}
 `_G.DEBUG` and `_G["DEBUG"]` work identically. `getgenv().DEBUG` does not: it is a
 function call, so there is nothing to replace at build time.
-
-A define is a boolean, a finite number, or a string. The type reaches the cache key, so
-`true` and `"true"` are different builds. Infinity and NaN are `bad-define`.
+{% endhint %}
 
 ## Values from outside
 
@@ -104,8 +204,12 @@ vars = { version = pcmp.env("VERSION") },                    -- errors when unse
 vars = { version = pcmp.envOr("VERSION", "v0.0.0-dev") },    -- explicit fallback
 ```
 
-`--var` and `--define` work whatever the format. There is no build-timestamp define,
-because it would break `pcmp verify`. Pass one in with `--var` if you want it.
+`--var` and `--define` work whatever the format, and beat the manifest.
+
+{% hint style="info" %}
+There is no build-timestamp define, because it would break `pcmp verify`. Pass one in
+with `--var` if you want it.
+{% endhint %}
 
 ## Inheritance
 
@@ -126,22 +230,28 @@ plain: { extends: "base", header: [] },
 
 ## Entry and output
 
-A file in, a file out, bundled if `darklua.bundle` is set:
-
+{% tabs %}
+{% tab title="File to file" %}
 ```json5
 entry: "src/init.luau", output: "dist/app.luau",
 ```
 
-A directory in, a directory out. Every file processed, structure preserved, no bundling:
+Bundled into one file if `darklua.bundle` is set.
+{% endtab %}
 
+{% tab title="Directory to directory" %}
 ```json5
 entry: "src", output: "build",
 ```
 
+Every file processed, structure preserved, no bundling.
+{% endtab %}
+{% endtabs %}
+
 `header` applies to every `.luau` and `.lua` artifact either way.
 
-`output` expands `{profile}`, every var, and every matrix axis. `{{` and `}}` are
-literal braces. An unknown token is `bad-template`, not an empty string.
+`output` expands `{profile}`, every var, and every matrix axis. `{{` and `}}` are literal
+braces. An unknown token is [`bad-template`](diagnostics.md), not an empty string.
 
 ## Loaders
 
@@ -161,20 +271,30 @@ Require them **with the extension**:
 local config = require("@self/assets/config.json")
 ```
 
-Available: `copy`, `skip`, `json`, `json_lines`, `toml`, `yaml`, `string`, `buffer`,
-`bytes`, and encoded forms such as `string/base64` and `buffer/zstd`.
+| `use` | |
+| --- | --- |
+| `copy` | Passed through untouched |
+| `skip` | Excluded from the output |
+| `luau` | Parsed and processed as source |
+| `json`, `json_lines`, `toml`, `yaml` | Returned as parsed data |
+| `string`, `buffer`, `bytes` | Returned as content |
 
+`string`, `buffer` and `bytes` also take an encoding: `/base64`, `/zstd`, `/gzip` or
+`/zlib`.
+
+{% hint style="info" %}
 An ordered list rather than darklua's map, because darklua takes the first match and a
 Luau table iterates in hash order. Declaring loaders in both places is
-`darklua-loaders`.
+[`darklua-loaders`](diagnostics.md).
+{% endhint %}
 
 ## Matrix
 
-One task per combination, named by its coordinates.
+One task per axis combination, named by its coordinates.
 
 ```
 $ pcmp plan
-4 task(s), plan 881efe11b879
+4 task(s), plan 9b35cd36a0d9
 
   dist[flavour=dev,target=lune]    dist/lune/dev.luau    17 rules
   dist[flavour=dev,target=roblox]  dist/roblox/dev.luau  17 rules
@@ -199,6 +319,14 @@ pcmp.env("VERSION")               -- errors when unset
 pcmp.envOr("VERSION", "v0.0.0")   -- explicit fallback
 ```
 
-Both read `--env KEY=VALUE` first, then the process environment. `os`, `io`, `require`,
-`loadstring`, `getfenv`, `setfenv`, `collectgarbage` and `math.random` are unavailable.
-`print` writes to stderr, so a manifest can trace itself without breaking `--json`.
+Both read `--env KEY=VALUE` first, then the process environment.
+
+{% hint style="info" %}
+`os`, `io`, `require`, `loadstring`, `getfenv`, `setfenv`, `collectgarbage` and
+`math.random` are unavailable, so two evaluations of one manifest cannot disagree.
+`print` writes to stderr, leaving stdout clean for `--json`.
+{% endhint %}
+
+{% content-ref url="darklua.md" %}
+[darklua.md](darklua.md)
+{% endcontent-ref %}

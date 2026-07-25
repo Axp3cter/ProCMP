@@ -64,11 +64,19 @@ impl AbsPath {
 
     /// Falls back to the absolute form when not under `base`, and renders an equal path
     /// as `.`.
+    ///
+    /// Always `/`-separated. Windows joins components with `\`, and a glob, a `.git`
+    /// segment and a cache key all have to read the same on every platform.
     pub fn relative_to(&self, base: &AbsPath) -> String {
-        match self.0.strip_prefix(&base.0) {
+        let rendered = match self.0.strip_prefix(&base.0) {
             Ok(relative) if relative.as_str().is_empty() => ".".to_owned(),
             Ok(relative) => relative.to_string(),
             Err(_) => self.0.to_string(),
+        };
+
+        match std::path::MAIN_SEPARATOR {
+            '/' => rendered,
+            separator => rendered.replace(separator, "/"),
         }
     }
 

@@ -8,30 +8,37 @@ description: Every command, flag and exit code.
 pcmp [OPTIONS] <COMMAND>
 ```
 
-<table><thead><tr><th width="260">Global flag</th><th></th></tr></thead><tbody>
-<tr><td><code>-m</code>, <code>--manifest &#60;PATH&#62;</code></td><td>Manifest to use. Discovered otherwise</td></tr>
-<tr><td><code>--cache-dir &#60;PATH&#62;</code></td><td>Where build state is kept. Defaults to <code>.pcmp/</code></td></tr>
-<tr><td><code>-e</code>, <code>--env &#60;KEY=VALUE&#62;</code></td><td>A value for <code>pcmp.env</code>, ahead of the process environment</td></tr>
-<tr><td><code>--var &#60;KEY=VALUE&#62;</code></td><td>Set a token. Beats the manifest</td></tr>
-<tr><td><code>-D</code>, <code>--define &#60;KEY=VALUE&#62;</code></td><td>Set a constant. Beats the manifest</td></tr>
-<tr><td><code>--json</code></td><td>Machine-readable output. Works on every command</td></tr>
-</tbody></table>
+## Global flags
 
-All are repeatable. `--env` is never exported to child processes.
+Available on every command, and all repeatable.
+
+| Flag | |
+| --- | --- |
+| `-m`, `--manifest <PATH>` | Manifest to use. Discovered otherwise |
+| `--cache-dir <PATH>` | Where build state is kept. Defaults to `.pcmp/` |
+| `-e`, `--env <KEY=VALUE>` | A value for `pcmp.env`, ahead of the process environment |
+| `--var <KEY=VALUE>` | Set a token. Beats the manifest |
+| `-D`, `--define <KEY=VALUE>` | Set a constant. Beats the manifest |
+| `--json` | Machine-readable output |
+
+{% hint style="info" %}
+`--env` is passed to the manifest explicitly, never exported, so a value given here
+cannot reach anything ProCMP spawns.
+{% endhint %}
 
 ## `plan`
 
-Resolve and print without building.
+Resolve and print without building. Touches no source file.
 
 ```
-$ pcmp plan
-2 task(s), plan a18350afadee
+$ pcmp plan --var version=v1.0.0
+2 task(s), plan e070fcff9252
 
-  debug    dist/debug/app.luau     7 rules
-  release  dist/release/app.luau  11 rules
+  dev      dist/dev/app.luau      5 rules
+  release  dist/release/app.luau  9 rules
 ```
 
-Touches no source files. The digest covers every task.
+The digest covers every task, so it changes when anything about the plan does.
 
 ## `build [TASKS]`
 
@@ -44,10 +51,21 @@ pcmp build --pick                  # choose from a menu
 pcmp build --no-cache              # rebuild regardless of cached state
 ```
 
-`*` is the only wildcard, because a matrix identifier holds `[`, `]` and `=`.
+```
+$ pcmp build --var version=v1.0.0
+  built   dev      dist/dev/app.luau      (12 ms)
+  built   release  dist/release/app.luau  (14 ms)
 
-Tasks run in parallel. A failure is collected, not aborted on. A selection matching
-nothing is an error.
+2 built, 0 cached, 0 failed
+```
+
+Tasks run in parallel. A failure is collected rather than aborted on, and a selection
+matching nothing is an error.
+
+{% hint style="info" %}
+`*` is the only wildcard, because a matrix identifier holds `[`, `]` and `=`, which
+every glob dialect would read as syntax.
+{% endhint %}
 
 ### `--pick`
 
@@ -66,8 +84,8 @@ A menu on stderr. Arrows move, enter chooses.
     Cancel
 ```
 
-Requires stdin and stderr to both be terminals, and errors otherwise. Naming tasks and
-passing `--pick` at once is rejected.
+Accepted by `build`, `watch`, `verify` and `explain`. Requires stdin and stderr to both
+be terminals, and naming tasks as well as passing `--pick` is rejected.
 
 ## `check`
 
@@ -76,12 +94,17 @@ pcmp check
 pcmp check --strict   # also fail on warnings
 ```
 
+```
+$ pcmp check
+no findings
+```
+
 See [Diagnostics](diagnostics.md).
 
 ## `verify [TASKS]`
 
 Builds twice with the cache off, then byte-compares every artifact. A directory output
-compares the whole tree. Accepts the same selectors as `build`, including `--pick`.
+compares the whole tree. Accepts the same selectors as `build`.
 
 ```
 $ pcmp verify
@@ -93,7 +116,7 @@ Names the differing tasks if anything changed.
 ## `watch [TASKS]`
 
 Builds, then rebuilds whenever an input or the manifest changes. Accepts the same
-selectors as `build`, including `--pick`.
+selectors as `build`.
 
 The watched set is the one the cache is keyed on. The manifest is re-read each cycle,
 including an edit that breaks it.
@@ -101,13 +124,31 @@ including an edit that breaks it.
 ## `explain [TASK]`
 
 Entry, output, digest, every var, every define with its type, and the darklua
-configuration the task compiles to. `--pick` chooses from a menu instead of naming one.
+configuration the task compiles to.
+
+```
+$ pcmp explain release --var version=v1.0.0
+task     release
+entry    src/init.luau
+output   dist/release/app.luau
+digest   bb38e35e4db8
+
+vars
+  name     app
+  profile  release
+  version  v1.0.0
+
+defines
+  DEBUG         bool:false
+  PCMP_NAME     string:app
+  PCMP_PROFILE  string:release
+  PCMP_VERSION  string:v1.0.0
+```
 
 ## `init`
 
 Writes a manifest and its schema. Nothing else: no directories, no prompts, no
-`.gitignore` rewriting. Only this directory is checked, so a project above does not
-block a nested one.
+`.gitignore` rewriting.
 
 ```
 $ pcmp init
@@ -117,9 +158,14 @@ created  pcmp.schema.json
 next     pcmp plan
 ```
 
-`--format luau` writes `pcmp.luau` and `pcmp.d.luau` instead. The entry point is
-detected from `src/init.luau`, `src/main.luau`, `init.luau` or `main.luau`. Refuses to
-overwrite.
+`--format luau` writes `pcmp.luau` and `pcmp.d.luau` instead. The entry point is detected
+from `src/init.luau`, `src/main.luau`, `init.luau` or `main.luau`, or given with
+`--entry`.
+
+{% hint style="info" %}
+Only the current directory is checked, so a project above does not block a nested one.
+Refuses to overwrite either file.
+{% endhint %}
 
 ## `schema`
 
@@ -128,36 +174,37 @@ pcmp schema                 # JSON Schema
 pcmp schema --format luau   # Luau type definitions
 ```
 
-Needs no project. See [Install](install.md#editor-completion).
+Needs no project. See [Editor completion](install.md#editor-completion).
 
 ## Inputs and caching
 
 A task is skipped when its configuration, every input, and the linked darklua are all
 unchanged.
 
-**Hashed:** every file under the manifest's directory and under every `sources` root,
-whatever its extension. A content loader can make a `.json` or a `.png` a build input.
-
-**Not hashed:** every task's `output`, the cache directory, `.git`, and anything matching
-`ignore`.
+| | |
+| --- | --- |
+| **Hashed** | Every file under the manifest's directory and under every `sources` root, whatever its extension |
+| **Not hashed** | Every task's `output`, the cache directory, `.git`, and anything matching `ignore` |
 
 ```json5
 sources: ["../shared"],            // extra roots
 ignore: ["**/Packages/**"],        // wax globs, relative to each root
 ```
 
-Ignoring a directory the build reads means edits there will not rebuild.
-
-Editing one file rebuilds every task.
+{% hint style="warning" %}
+Extension is never a filter, because a content loader can make a `.json` or a `.png` a
+real build input. By the same token, ignoring a directory the build reads means edits
+there will not rebuild.
+{% endhint %}
 
 ## Exit codes
 
-<table><thead><tr><th width="90">Code</th><th></th></tr></thead><tbody>
-<tr><td><code>0</code></td><td>Success</td></tr>
-<tr><td><code>1</code></td><td>A build task failed, or output was not reproducible</td></tr>
-<tr><td><code>2</code></td><td>The manifest could not be loaded or resolved</td></tr>
-<tr><td><code>5</code></td><td>Linting failed</td></tr>
-</tbody></table>
+| Code | |
+| --- | --- |
+| `0` | Success |
+| `1` | A build task failed, or output was not reproducible |
+| `2` | The manifest could not be loaded or resolved |
+| `5` | Linting failed |
 
 ## In CI
 
@@ -169,8 +216,14 @@ Editing one file rebuilds every task.
 ```
 {% endcode %}
 
+`--json` works on every command:
+
 ```sh
 pcmp check --json  | jq '[.[] | select(.severity == "deny")] | length'
 pcmp build --json  | jq '.tasks[] | select(.outcome.status == "failed")'
 pcmp verify --json | jq '.reproducible'
 ```
+
+{% content-ref url="diagnostics.md" %}
+[diagnostics.md](diagnostics.md)
+{% endcontent-ref %}

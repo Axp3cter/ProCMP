@@ -1,6 +1,6 @@
 //! The config surface, as written by a user.
 //!
-//! ProCMP owns eight profile fields. Everything that configures a transformation lives
+//! ProCMP owns ten profile fields. Everything that configures a transformation lives
 //! under [`Profile::darklua`], in darklua's own format.
 
 mod discover;

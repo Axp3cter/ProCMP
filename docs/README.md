@@ -1,51 +1,116 @@
 ---
-description: Bundle one Luau source tree into many build targets from a single manifest.
+description: One Luau source tree, many build targets, from a single manifest.
 ---
 
 # ProCMP
 
-One source tree, many artifacts. A minified release, a readable debug build, a Roblox
-variant, a Lune variant, all from one manifest.
+A minified release, a readable debug build, a Roblox variant and a Lune variant, all
+described in one file and built by one command. [darklua](https://darklua.com) is linked
+in as a library, so `pcmp` is a single binary.
+
+## Quickstart
+
+{% stepper %}
+{% step %}
+### Install
+
+```sh
+rokit add Proton-Utilities/ProCMP pcmp
+```
+{% endstep %}
+
+{% step %}
+### Scaffold
 
 ```sh
 pcmp init
 ```
 
-{% code title="pcmp.json5" %}
-```json5
-{
-  $schema: "./pcmp.schema.json",
+Writes `pcmp.json5` and a JSON Schema beside it, holding an `abstract` base profile, a
+`dev` profile and a `release` profile.
+{% endstep %}
 
-  vars: { name: "app", version: "v0.0.0-dev" },
+{% step %}
+### Build
 
-  profiles: {
-    release: {
-      entry: "src/init.luau",
-      output: "dist/{name}.luau",
-      define: { DEBUG: false },
-      darklua: {
-        generator: "dense",
-        rules: ["compute_expression", "remove_unused_if_branch"],
-      },
-    },
-  },
-}
+```sh
+pcmp build --var version=v1.0.0
+```
+
+```
+  built   dev      dist/dev/app.luau      (12 ms)
+  built   release  dist/release/app.luau  (14 ms)
+
+2 built, 0 cached, 0 failed
+```
+{% endstep %}
+{% endstepper %}
+
+## What a profile changes
+
+One source file, two profiles, two artifacts.
+
+{% code title="src/init.luau" %}
+```lua
+--!strict
+local VERSION: string = PCMP_VERSION
+
+local function boot(): string
+	if DEBUG then
+		print("verbose telemetry")
+	end
+	return VERSION
+end
+
+return boot()
 ```
 {% endcode %}
 
+{% tabs %}
+{% tab title="release" %}
+{% code title="dist/release/app.luau" %}
+```lua
+-- app v1.0.0
+local a='v1.0.0'local function boot()return a end return boot()
 ```
-$ pcmp build --var version=v1.0.0
-  built   release  dist/app.luau  (1 ms)
+{% endcode %}
+{% endtab %}
 
-1 built, 0 cached, 0 failed
+{% tab title="dev" %}
+{% code title="dist/dev/app.luau" %}
+```lua
+local VERSION: string = 'v1.0.0'
+
+local function boot(): string
+    if true then
+        print('verbose telemetry')
+    end
+
+    return VERSION
+end
+
+return boot()
 ```
+{% endcode %}
+{% endtab %}
+{% endtabs %}
 
-`if DEBUG then` is gone from the artifact, not shipped as `if false then`.
+`DEBUG` is substituted as a value, the condition folds, and the branch leaves the release
+artifact rather than shipping as `if false then`.
 
-```sh
-pcmp plan     # what would be built
-pcmp check    # lint the manifest and the plan
-pcmp build    # build it
-pcmp watch    # rebuild on every change
-pcmp verify   # prove the output is reproducible
-```
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `pcmp init` | Write a starter manifest and its schema |
+| `pcmp plan` | Resolve and print, building nothing |
+| `pcmp check` | Lint the manifest and the plan |
+| `pcmp build` | Build every task, or a selection |
+| `pcmp watch` | Rebuild whenever an input changes |
+| `pcmp verify` | Prove the output is reproducible |
+| `pcmp explain` | Print the darklua configuration a task compiles to |
+| `pcmp schema` | Emit the manifest schema |
+
+{% content-ref url="install.md" %}
+[install.md](install.md)
+{% endcontent-ref %}
