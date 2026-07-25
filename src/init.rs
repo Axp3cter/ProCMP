@@ -21,7 +21,11 @@ pub struct Created {
 }
 
 pub fn run(root: &AbsPath, name: &str, entry: Option<&str>, format: Format) -> Result<Created> {
-    if let Ok(existing) = manifest::discover(root) {
+    // This directory only. A project above is not this project.
+    if let Some(existing) = manifest::CANDIDATES
+        .iter()
+        .find_map(|name| root.join(name).ok().filter(AbsPath::is_file))
+    {
         return Err(Error::AlreadyExists(existing.relative_to(root)));
     }
 
@@ -87,7 +91,7 @@ fn quote_luau(value: &str) -> String {
         .map(|c| match c {
             '\\' => "\\\\".to_owned(),
             '"' => "\\\"".to_owned(),
-            c if c.is_control() => " ".to_owned(),
+            c if c.is_control() => format!("\\{:03}", c as u32),
             c => c.to_string(),
         })
         .collect();

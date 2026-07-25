@@ -3,11 +3,13 @@
 mod menu;
 mod render;
 
+use std::collections::BTreeMap;
+
 use clap::{Parser, Subcommand, ValueEnum};
-use procmp::diag::{self, Severity};
+use procmp::diag::{self, Diag, Severity};
 use procmp::error::{Error, ExitCode, Result};
 use procmp::{
-    AbsPath, Engine, Graph, Overrides, Scope, build, check, init, manifest, plan, schema,
+    AbsPath, Engine, Graph, Manifest, Overrides, Scope, build, check, init, manifest, plan, schema,
 };
 
 use render::outln;
@@ -16,7 +18,11 @@ use render::outln;
 #[command(
     name = "pcmp",
     version,
-    long_version = concat!(env!("CARGO_PKG_VERSION"), "\ndarklua ", env!("DARKLUA_VERSION")),
+    long_version = format!(
+        "{}\ndarklua {}",
+        env!("CARGO_PKG_VERSION"),
+        procmp::DARKLUA_VERSION
+    ),
     about = "Multi-target build composition for Luau projects"
 )]
 pub struct Cli {
@@ -58,7 +64,7 @@ enum Command {
         /// Task or profile names. `*` is accepted. All when omitted.
         tasks: Vec<String>,
         /// Choose from a menu instead. Needs a terminal.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "tasks")]
         pick: bool,
         /// Ignore cached state.
         #[arg(long)]
@@ -76,7 +82,8 @@ enum Command {
     Explain {
         /// Required unless `--pick` is given.
         task: Option<String>,
-        #[arg(long)]
+        /// Choose from a menu instead. Needs a terminal.
+        #[arg(long, conflicts_with = "task")]
         pick: bool,
     },
 
@@ -87,13 +94,20 @@ enum Command {
     },
 
     /// Build twice and prove the output is byte-identical.
-    Verify,
+    Verify {
+        /// Task or profile names. `*` is accepted. All when omitted.
+        tasks: Vec<String>,
+        /// Choose from a menu instead. Needs a terminal.
+        #[arg(long, conflicts_with = "tasks")]
+        pick: bool,
+    },
 
     /// Rebuild whenever an input or the manifest changes.
     Watch {
         /// Task or profile names. `*` is accepted. All when omitted.
         tasks: Vec<String>,
-        #[arg(long)]
+        /// Choose from a menu instead. Needs a terminal.
+        #[arg(long, conflicts_with = "tasks")]
         pick: bool,
     },
 
@@ -116,18 +130,66 @@ enum Shape {
     Luau,
 }
 
+/// A manifest found, loaded and resolved. Every command except `schema` and `init`
+/// opens one, and each says so by asking for it.
+struct Project {
+    path: AbsPath,
+    root: AbsPath,
+    cache: AbsPath,
+    manifest: Manifest,
+    graph: Graph,
+    diags: Vec<Diag>,
+    env: manifest::Env,
+    overrides: Overrides,
+}
+
+impl Project {
+    fn open(cli: &Cli, cwd: &AbsPath) -> Result<Self> {
+        let env = manifest::Env::parse(&cli.env)?;
+        let overrides = Overrides::parse(&cli.define, &cli.var)?;
+
+        let path = match cli.manifest.as_deref() {
+            Some(given) => cwd.join(given)?,
+            None => manifest::discover(cwd)?,
+        };
+
+        let loaded = manifest::load(&path, &env)?;
+        let cache = match cli.cache_dir.as_deref() {
+            Some(dir) => cwd.join(dir)?,
+            None => loaded.root.join(build::CACHE_DIR)?,
+        };
+
+        let resolution = plan::resolve(&loaded.manifest, &loaded.root, &overrides);
+        let Some(graph) = resolution.graph else {
+            render::diags(&resolution.diags, cli.json);
+            return Err(Error::Unresolved(path.relative_to(cwd)));
+        };
+
+        Ok(Self {
+            path,
+            root: loaded.root,
+            cache,
+            manifest: loaded.manifest,
+            graph,
+            diags: resolution.diags,
+            env,
+            overrides,
+        })
+    }
+}
+
 pub fn run(cli: &Cli) -> Result<ExitCode> {
     let cwd = AbsPath::cwd()?;
 
-    // Neither needs a manifest.
     match &cli.command {
         Command::Schema { format } => {
             outln(match format {
                 Shape::Json => schema::json(),
                 Shape::Luau => schema::luau(),
             });
-            return Ok(ExitCode::Success);
+            Ok(ExitCode::Success)
         }
+
         Command::Init {
             name,
             entry,
@@ -138,47 +200,25 @@ pub fn run(cli: &Cli) -> Result<ExitCode> {
                 .unwrap_or_else(|| cwd.file_name().unwrap_or("project").to_owned());
             let created = init::run(&cwd, &name, entry.as_deref(), *format)?;
 
-            outln(format!("created  {}", created.manifest.relative_to(&cwd)));
-            outln(format!(
-                "created  {}",
-                created.definitions.relative_to(&cwd)
-            ));
+            for path in [&created.manifest, &created.definitions] {
+                outln(format!("created  {}", path.relative_to(&cwd)));
+            }
             outln("");
             outln("next     pcmp plan");
-            return Ok(ExitCode::Success);
+            Ok(ExitCode::Success)
         }
-        _ => {}
-    }
 
-    let env = manifest::Env::parse(&cli.env)?;
-    let overrides = Overrides::parse(&cli.define, &cli.var)?;
-
-    let path = match cli.manifest.as_deref() {
-        Some(path) => cwd.join(path)?,
-        None => manifest::discover(&cwd)?,
-    };
-
-    let loaded = manifest::load(&path, &env)?;
-    let cache = match cli.cache_dir.as_deref() {
-        Some(dir) => cwd.join(dir)?,
-        None => loaded.root.join(build::CACHE_DIR)?,
-    };
-    let resolution = plan::resolve(&loaded.manifest, &loaded.root, &overrides);
-
-    let Some(graph) = resolution.graph else {
-        render::diags(&resolution.diags, cli.json);
-        return Err(Error::Unresolved(path.relative_to(&cwd)));
-    };
-
-    match &cli.command {
         Command::Plan => {
-            render::plan(&graph, &loaded.root, cli.json);
+            let project = Project::open(cli, &cwd)?;
+            render::plan(&project.graph, &project.root, cli.json);
             Ok(ExitCode::Success)
         }
 
         Command::Check { strict } => {
-            let mut diags = resolution.diags;
-            diags.extend(check::run(&loaded.manifest, &graph));
+            let project = Project::open(cli, &cwd)?;
+
+            let mut diags = project.diags;
+            diags.extend(check::run(&project.manifest, &project.graph));
             diag::sort(&mut diags);
             render::diags(&diags, cli.json);
 
@@ -190,8 +230,11 @@ pub fn run(cli: &Cli) -> Result<ExitCode> {
         }
 
         Command::Explain { task, pick } => {
-            let task = match (task, pick) {
-                (_, true) => match menu::tasks(&graph, &loaded.root, "explain", menu::Mode::One)? {
+            let project = Project::open(cli, &cwd)?;
+            let graph = &project.graph;
+
+            let chosen = match (task, pick) {
+                (_, true) => match menu::tasks(graph, &project.root, "explain", menu::Mode::One)? {
                     Some(indices) => &graph.tasks[indices[0]],
                     None => return Ok(ExitCode::Success),
                 },
@@ -201,7 +244,7 @@ pub fn run(cli: &Cli) -> Result<ExitCode> {
                 (None, false) => return Err(Error::NoTaskGiven(graph.known())),
             };
 
-            render::explain(task, &loaded.root, cli.json);
+            render::explain(chosen, &project.root, cli.json);
             Ok(ExitCode::Success)
         }
 
@@ -210,11 +253,13 @@ pub fn run(cli: &Cli) -> Result<ExitCode> {
             pick,
             no_cache,
         } => {
-            let Some(selected) = choose(&graph, tasks, *pick, &loaded.root, "build")? else {
+            let project = Project::open(cli, &cwd)?;
+            let Some(selected) = choose(&project.graph, tasks, *pick, &project.root, "build")?
+            else {
                 return Ok(ExitCode::Success);
             };
 
-            let report = Engine::new(loaded.root.clone(), cache)
+            let report = Engine::new(project.root.clone(), project.cache)
                 .cached(!no_cache)
                 .run(&selected)?;
 
@@ -222,49 +267,61 @@ pub fn run(cli: &Cli) -> Result<ExitCode> {
             Ok(exit_on(report.succeeded()))
         }
 
-        Command::Verify => {
-            let engine = Engine::new(loaded.root.clone(), cache).cached(false);
+        Command::Verify { tasks, pick } => {
+            let project = Project::open(cli, &cwd)?;
+            let Some(selected) = choose(&project.graph, tasks, *pick, &project.root, "verify")?
+            else {
+                return Ok(ExitCode::Success);
+            };
+
+            let engine = Engine::new(project.root.clone(), project.cache).cached(false);
 
             // A failed build has no artifact to compare.
-            let Some(first) = pass(&engine, &graph, cli.json)? else {
+            let Some(first) = pass(&engine, &selected, cli.json)? else {
                 return Ok(ExitCode::Build);
             };
-            let Some(second) = pass(&engine, &graph, cli.json)? else {
+            let Some(second) = pass(&engine, &selected, cli.json)? else {
                 return Ok(ExitCode::Build);
             };
 
             let differing: Vec<&str> = first
                 .iter()
-                .zip(&second)
-                .filter(|((_, a), (_, b))| a != b)
-                .map(|((id, _), _)| *id)
+                .filter(|(id, digest)| second.get(*id) != Some(*digest))
+                .map(|(id, _)| *id)
                 .collect();
 
-            let reproducible = differing.is_empty();
-            render::verify(&differing, graph.len(), cli.json);
-            Ok(exit_on(reproducible))
+            render::verify(&differing, selected.len(), cli.json);
+            Ok(exit_on(differing.is_empty()))
         }
 
         Command::Watch { tasks, pick } => {
-            let Some(selected) = choose(&graph, tasks, *pick, &loaded.root, "watch")? else {
+            let project = Project::open(cli, &cwd)?;
+            let Some(selected) = choose(&project.graph, tasks, *pick, &project.root, "watch")?
+            else {
                 return Ok(ExitCode::Success);
             };
 
             // Resolved once, so a picked set survives the manifest being re-read.
             let names: Vec<String> = selected.tasks.iter().map(|t| t.id.clone()).collect();
-            let scope = Scope::of(&selected, &cache)?;
+            let scope = Scope::of(&selected, &project.cache)?;
             let json = cli.json;
 
-            build::watch::run(&scope, &path, || {
-                if let Err(error) = rebuild(&path, &cache, &names, json, &env, &overrides) {
+            build::watch::run(&scope, &project.path, || {
+                let rebuilt = rebuild(
+                    &project.path,
+                    &project.cache,
+                    &names,
+                    json,
+                    &project.env,
+                    &project.overrides,
+                );
+                if let Err(error) = rebuilt {
                     eprintln!("error: {error}");
                 }
             })?;
 
             Ok(ExitCode::Success)
         }
-
-        Command::Schema { .. } | Command::Init { .. } => unreachable!("handled above"),
     }
 }
 
@@ -304,7 +361,7 @@ fn pass<'g>(
     engine: &Engine,
     graph: &'g Graph,
     json: bool,
-) -> Result<Option<Vec<(&'g str, String)>>> {
+) -> Result<Option<BTreeMap<&'g str, String>>> {
     let report = engine.run(graph)?;
 
     if !report.succeeded() {
@@ -315,8 +372,9 @@ fn pass<'g>(
     fingerprints(graph).map(Some)
 }
 
+/// Keyed by task, so the two passes are compared by name rather than by position.
 /// A directory output folds in every file beneath it.
-fn fingerprints(graph: &Graph) -> Result<Vec<(&str, String)>> {
+fn fingerprints(graph: &Graph) -> Result<BTreeMap<&str, String>> {
     graph
         .tasks
         .iter()

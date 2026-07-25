@@ -25,7 +25,6 @@ pub use manifest::Manifest;
 pub use path::AbsPath;
 pub use plan::{Graph, Overrides, Task};
 
-/// The darklua this binary is linked against, baked in from the lockfile.
-pub fn darklua_version() -> &'static str {
-    env!("DARKLUA_VERSION")
-}
+/// The darklua this crate links against. Bump with the `=` requirement in `Cargo.toml`,
+/// which is what decides the version and cannot resolve to another.
+pub const DARKLUA_VERSION: &str = "0.19.0";

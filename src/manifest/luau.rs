@@ -109,6 +109,22 @@ fn harden(lua: &Lua, origin: &str) -> Result<()> {
     let globals = lua.globals();
     let vm = |action: String, e: mlua::Error| Error::Vm(origin.to_owned(), action, e.to_string());
 
+    // Luau's own `print` writes to stdout, where it would land in the middle of `--json`.
+    let printed = lua
+        .create_function(|_, values: mlua::Variadic<Value>| {
+            let line = values
+                .iter()
+                .map(Value::to_string)
+                .collect::<mlua::Result<Vec<_>>>()?;
+            eprintln!("{}", line.join("\t"));
+            Ok(())
+        })
+        .map_err(|e| vm("redirect `print`".to_owned(), e))?;
+
+    globals
+        .set("print", printed)
+        .map_err(|e| vm("redirect `print`".to_owned(), e))?;
+
     for name in REVOKED {
         globals
             .set(*name, Value::Nil)

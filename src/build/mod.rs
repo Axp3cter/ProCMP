@@ -14,6 +14,7 @@ use serde_json::{Map, Value};
 
 use crate::digest::{self, Digest, Hasher};
 use crate::error::{Error, Result};
+use crate::manifest::Rule;
 use crate::path::AbsPath;
 use crate::plan::{Graph, Task};
 
@@ -133,7 +134,7 @@ impl Engine {
         let mut h = Hasher::new();
         h.field("config", task.digest().bytes())
             .field("sources", sources.bytes())
-            .field("darklua", crate::darklua_version());
+            .field("darklua", crate::DARKLUA_VERSION);
         h.finish()
     }
 
@@ -145,7 +146,11 @@ impl Engine {
             ));
         }
 
-        if self.use_cache && task.output.exists() && self.fresh(task, key) {
+        // A directory output that exists but holds nothing is not a previous build.
+        if self.use_cache
+            && artifacts(&task.output).is_ok_and(|found| !found.is_empty())
+            && self.fresh(task, key)
+        {
             return Ok(Outcome::Cached {
                 digest: key.short(),
             });
@@ -297,8 +302,6 @@ pub fn config_json(task: &Task) -> Value {
 
     Value::Object(config)
 }
-
-use crate::manifest::Rule;
 
 /// On rejection the error carries the emitted JSON.
 fn configuration(task: &Task) -> Result<Configuration> {

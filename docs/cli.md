@@ -66,7 +66,8 @@ A menu on stderr. Arrows move, enter chooses.
     Cancel
 ```
 
-Requires stdin and stderr to both be terminals, and errors otherwise.
+Requires stdin and stderr to both be terminals, and errors otherwise. Naming tasks and
+passing `--pick` at once is rejected.
 
 ## `check`
 
@@ -77,10 +78,10 @@ pcmp check --strict   # also fail on warnings
 
 See [Diagnostics](diagnostics.md).
 
-## `verify`
+## `verify [TASKS]`
 
 Builds twice with the cache off, then byte-compares every artifact. A directory output
-compares the whole tree.
+compares the whole tree. Accepts the same selectors as `build`, including `--pick`.
 
 ```
 $ pcmp verify
@@ -105,7 +106,8 @@ configuration the task compiles to. `--pick` chooses from a menu instead of nami
 ## `init`
 
 Writes a manifest and its schema. Nothing else: no directories, no prompts, no
-`.gitignore` rewriting.
+`.gitignore` rewriting. Only this directory is checked, so a project above does not
+block a nested one.
 
 ```
 $ pcmp init

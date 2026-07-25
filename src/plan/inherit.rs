@@ -15,14 +15,18 @@ pub fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option
 
     loop {
         // Also bounds the walk: a chain longer than the profile count must repeat.
-        if seen.contains(&cursor) {
-            seen.push(cursor);
+        if let Some(entered) = seen.iter().position(|step| *step == cursor) {
+            // From where the chain re-enters itself, so the prefix that led there is
+            // left out of the list.
+            let mut cycle = seen[entered..].to_vec();
+            cycle.push(cursor);
+
             diags.push(
                 Diag::deny(
                     CYCLIC_EXTENDS,
                     format!("profile `{name}` has a cyclic `extends` chain"),
                 )
-                .help(format!("the cycle is: {}", seen.join(", "))),
+                .help(format!("the cycle is: {}", cycle.join(", "))),
             );
             return None;
         }
@@ -54,6 +58,9 @@ pub fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option
     for profile in chain.iter().rev() {
         merge(&mut merged, profile);
     }
+
+    merged.vars.sort_keys();
+    merged.define.sort_keys();
     merged.extends = None;
     // Extending a template produces a real build.
     merged.is_abstract = false;
@@ -94,6 +101,4 @@ fn merge(base: &mut Profile, overlay: &Profile) {
     for (key, value) in &overlay.define {
         base.define.insert(key.clone(), value.clone());
     }
-    base.vars.sort_keys();
-    base.define.sort_keys();
 }

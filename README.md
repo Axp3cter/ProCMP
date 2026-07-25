@@ -17,7 +17,7 @@ Links in [darklua](https://darklua.com) as a library.
 ```sh
 rokit add Proton-Utilities/ProCMP pcmp
 aftman add Proton-Utilities/ProCMP pcmp
-cargo install --git https://github.com/Proton-Utilities/ProCMP
+cargo install --locked --git https://github.com/Proton-Utilities/ProCMP
 ```
 
 ## Use

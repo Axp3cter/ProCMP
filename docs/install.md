@@ -28,11 +28,12 @@ aftman add Proton-Utilities/ProCMP pcmp
 ## Cargo
 
 ```sh
-cargo install --git https://github.com/Proton-Utilities/ProCMP
+cargo install --locked --git https://github.com/Proton-Utilities/ProCMP
 ```
 
-Needs Rust 1.90 or newer. The first build takes a few minutes, because darklua and a
-Luau interpreter are compiled in.
+Needs Rust 1.90 or newer. `--locked` keeps dependency resolution on the versions this
+release was tested against, some of which need a newer compiler in later releases. The
+first build takes a few minutes, because darklua and a Luau interpreter are compiled in.
 
 ## Binary
 

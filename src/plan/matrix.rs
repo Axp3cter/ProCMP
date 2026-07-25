@@ -30,6 +30,9 @@ pub fn expand(
         return;
     }
 
+    // Every axis is reported, so one edit fixes them all.
+    let mut usable = true;
+
     for (axis, values) in &matrix.axes {
         if values.is_empty() {
             diags.push(
@@ -37,9 +40,10 @@ pub fn expand(
                     EMPTY_AXIS,
                     format!("matrix `{name}` axis `{axis}` has no values"),
                 )
-                .help("an empty axis expands to zero tasks, which is never intended"),
+                .help("an empty axis expands to zero tasks"),
             );
-            return;
+            usable = false;
+            continue;
         }
 
         // A repeat expands to two tasks with identical coordinates.
@@ -50,10 +54,14 @@ pub fn expand(
                     DUPLICATE_AXIS_VALUE,
                     format!("matrix `{name}` axis `{axis}` lists `{repeated}` twice"),
                 )
-                .help("each value expands to one task, so a repeat has no second meaning"),
+                .help("each value expands to one task, so a repeat adds nothing"),
             );
-            return;
+            usable = false;
         }
+    }
+
+    if !usable {
+        return;
     }
 
     let Some(base) = flatten(manifest, &matrix.base, diags) else {

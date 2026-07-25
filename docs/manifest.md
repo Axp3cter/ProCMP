@@ -201,3 +201,4 @@ pcmp.envOr("VERSION", "v0.0.0")   -- explicit fallback
 
 Both read `--env KEY=VALUE` first, then the process environment. `os`, `io`, `require`,
 `loadstring`, `getfenv`, `setfenv`, `collectgarbage` and `math.random` are unavailable.
+`print` writes to stderr, so a manifest can trace itself without breaking `--json`.

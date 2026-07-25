@@ -72,8 +72,8 @@ impl Scope {
     pub fn fingerprint(&self) -> Result<Digest> {
         let mut entries: BTreeMap<String, Digest> = BTreeMap::new();
 
-        for root in &self.roots {
-            self.walk(root, root, &mut entries)?;
+        for (index, root) in self.roots.iter().enumerate() {
+            self.walk(index, root, root, &mut entries)?;
         }
 
         let mut h = Hasher::new();
@@ -106,8 +106,11 @@ impl Scope {
             .any(|glob| glob.is_match(relative.as_str()))
     }
 
+    /// Keyed by root index, not by path alone: two sibling roots can each hold a
+    /// `src/init.luau`, and one relative name would shadow the other.
     fn walk(
         &self,
+        index: usize,
         root: &AbsPath,
         dir: &AbsPath,
         entries: &mut BTreeMap<String, Digest>,
@@ -132,7 +135,7 @@ impl Scope {
                 .map_err(|e| Error::Read(path.to_string(), e.to_string()))?;
 
             if kind.is_dir() {
-                self.walk(root, &path, entries)?;
+                self.walk(index, root, &path, entries)?;
                 continue;
             }
 
@@ -143,7 +146,10 @@ impl Scope {
 
             let bytes = std::fs::read(path.as_std())
                 .map_err(|e| Error::Read(path.to_string(), e.to_string()))?;
-            entries.insert(path.relative_to(root), digest::of(&bytes));
+            entries.insert(
+                format!("{index}:{}", path.relative_to(root)),
+                digest::of(&bytes),
+            );
         }
 
         Ok(())

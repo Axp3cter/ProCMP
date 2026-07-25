@@ -37,7 +37,6 @@ impl Format {
 #[derive(Debug)]
 pub struct Loaded {
     pub manifest: Manifest,
-    pub origin: AbsPath,
     /// Directory relative paths resolve against.
     pub root: AbsPath,
 }
@@ -79,7 +78,6 @@ pub fn load(path: &AbsPath, env: &Env) -> Result<Loaded> {
 
     Ok(Loaded {
         manifest: parse(&text, path.as_str(), format, env)?,
-        origin: path.clone(),
         root,
     })
 }

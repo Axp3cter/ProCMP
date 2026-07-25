@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// Pointer for editor validation. Accepted and ignored.
     #[serde(default, rename = "$schema", skip_serializing_if = "Option::is_none")]
@@ -34,7 +34,7 @@ pub struct Manifest {
 /// Every overridable field is an [`Option`], collections included: inheritance has to
 /// tell "not declared" from "declared empty". `vars` and `define` accumulate instead.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Profile {
     /// A template that builds nothing, exempt from `entry` and `output`.
     #[serde(
@@ -87,7 +87,7 @@ pub struct Profile {
 
 /// The cartesian product of its axes, one task per combination.
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Matrix {
     pub base: String,
     pub axes: IndexMap<String, Vec<String>>,

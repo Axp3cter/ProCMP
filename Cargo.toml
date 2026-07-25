@@ -5,16 +5,10 @@ version      = "4.0.0"
 edition      = "2024"
 rust-version = "1.90"
 license      = "MIT"
-readme       = "README.md"
 repository   = "https://github.com/Proton-Utilities/ProCMP"
 keywords     = ["luau", "darklua", "bundler", "roblox", "build"]
 categories   = ["command-line-utilities", "development-tools::build-utils"]
-exclude      = ["docs/", ".github/", ".gitbook.yaml"]
-build        = "build.rs"
-
-[lib]
-name = "procmp"
-path = "src/lib.rs"
+exclude      = ["docs/", ".github/", ".gitbook.yaml", "rust-toolchain.toml", "rustfmt.toml"]
 
 [[bin]]
 name = "pcmp"
@@ -23,9 +17,11 @@ path = "src/main.rs"
 [dependencies]
 blake3                = "1"
 camino                = { version = "1", features = ["serde1"] }
-clap                  = { version = "4", features = ["derive", "wrap_help"] }
+clap                  = { version = "4", features = ["derive", "string", "wrap_help"] }
 crossterm             = "0.29"
-darklua               = "0.19"
+# Pinned exactly, and mirrored by `procmp::DARKLUA_VERSION`. Bump both. A darklua patch
+# release can change emitted bytes, and the version is part of every cache key.
+darklua               = "=0.19.0"
 indexmap              = { version = "2", features = ["serde"] }
 json5                 = "1"
 mlua                  = { version = "0.11", features = ["luau", "vendored", "serialize"] }
