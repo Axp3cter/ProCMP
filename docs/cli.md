@@ -29,7 +29,7 @@ plan  9b35cd36a0d9
 1 built, 1 cached, 0 failed
 ```
 
-A task is skipped when its configuration, its inputs and its artifacts are all unchanged. Editing an artifact by hand counts, so the next build restores it. `--timings` adds a duration to each row.
+A task is skipped when its configuration, its inputs and its artifacts are all unchanged. Editing an artifact by hand counts, so the next build restores it.
 
 ```console
 $ pcmp plan --why
@@ -61,11 +61,11 @@ Each `sources` root gets a `watching` line of its own.
 vars = { version = pcmp.envOr("VERSION", "dev"), built = pcmp.now() }
 ```
 
-A manifest that reads the clock, the environment or a file changes between runs, so record what it read.
+A manifest like this changes between runs. Record what it read, then build from the record.
 
 ```sh
-pcmp build --lock      # build, and record
-pcmp build --frozen    # build from that record, and fail if anything differs
+pcmp build --lock
+pcmp build --frozen    # fails if anything differs
 ```
 
 A frozen build answers the manifest from `pcmp.lock`, so `pcmp.now()` returns the pinned instant and closes with `2 reproduced, 0 differing`.

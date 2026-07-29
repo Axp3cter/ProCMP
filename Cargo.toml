@@ -8,7 +8,7 @@ license      = "MIT"
 repository   = "https://github.com/Proton-Utilities/ProCMP"
 keywords     = ["luau", "darklua", "bundler", "roblox", "build"]
 categories   = ["command-line-utilities", "development-tools::build-utils"]
-exclude      = ["docs/", ".github/", ".gitbook.yaml", "rust-toolchain.toml", "rustfmt.toml"]
+exclude      = ["docs/", ".github/", "zensical.toml", "rust-toolchain.toml", "rustfmt.toml"]
 
 [[bin]]
 name = "pcmp"

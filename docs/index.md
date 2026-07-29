@@ -4,7 +4,7 @@ description: One Luau source tree, many build targets, from a single manifest.
 
 # ProCMP
 
-One Luau source tree, many build targets, from a single manifest. [darklua](https://darklua.com) is linked in, so `pcmp` is a single binary.
+ProCMP builds one Luau source tree into several artifacts at once. Each artifact comes from a named profile, and every profile lives in one manifest file. [darklua](https://darklua.com) is linked in as a library, so `pcmp` is one binary with no second tool to install.
 
 ## Install
 
@@ -79,7 +79,7 @@ return VERSION
     return VERSION
     ```
 
-`release` sets `DEBUG` to `false` and asks darklua to fold and strip. `dev` sets it to `true` and asks for nothing, so a stack trace still points at your source. Both are ten lines of [manifest](manifest.md).
+`release` sets `DEBUG` to `false` and asks darklua to fold and strip. `dev` sets it to `true` and asks for nothing, so a stack trace still points at your source. Both are a few lines of [manifest](manifest.md).
 
 ## Editor completion
 

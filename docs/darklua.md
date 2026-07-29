@@ -45,7 +45,11 @@ darklua: {
 | `rules: []` | bundle and generate, transform nothing |
 | `rules: [a, b]` | exactly these, in this order |
 
-A rule is a bare name, or an object with a `rule` key and that rule's own settings. Each `define` becomes an `inject_global_value` rule in front of whatever you wrote, and `pcmp plan <TASK>` prints the result as a valid `.darklua.json`.
+In a Luau manifest, `rules = {}` is the empty list. Luau cannot tell an empty list from an
+empty map, so `pcmp` reads `{}` as a list at `rules`, `apply_to_files`, `skip_files`,
+`excludes` and `globals`. Everywhere else it stays a map.
+
+A rule is a bare name, or an object with a `rule` key and that rule's own settings. Each `define` becomes an `inject_global_value` rule in front of whatever you wrote.
 
 ```console
 $ pcmp plan release
@@ -60,6 +64,10 @@ darklua
     ]
   }
 ```
+
+`pcmp plan <TASK>` prints the result as a valid `.darklua.json`.
+
+## Rule order
 
 Two orderings are checked, both of them darklua's own.
 
@@ -80,7 +88,3 @@ Two orderings are checked, both of them darklua's own.
 ```json5
 unbundled: { extends: "release", darklua: { bundle: null } }
 ```
-
-## Empty tables in a Luau manifest
-
-Luau cannot tell an empty list from an empty map, so `pcmp` reads `{}` as a list at `rules`, `apply_to_files`, `skip_files`, `excludes` and `globals`, and as a map everywhere else.

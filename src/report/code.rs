@@ -592,8 +592,8 @@ template, or give one of them an axis."
 /// binary is the source, and a page that disagrees with the binary fails the build.
 ///
 /// The heading of each entry is its slug, so `toc.permalink` gives every code the anchor
-/// the rest of the documentation links to, and Zensical's link validation then checks
-/// those anchors on every build.
+/// the rest of the documentation links to, and the site build then checks those anchors,
+/// so renaming a code fails CI rather than leaving a dead link behind.
 pub fn reference() -> String {
     let mut out = String::from(
         "---\n\

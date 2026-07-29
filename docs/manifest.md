@@ -4,13 +4,13 @@ description: Every field you can write, and what it does.
 
 # Manifest
 
-`pcmp` searches the working directory and then each directory above it.
+`pcmp` searches the working directory and then each directory above it. The extension picks the format, and all five produce the same build.
 
 ```
 pcmp.json5   pcmp.json   pcmp.jsonc   pcmp.toml   pcmp.luau
 ```
 
-The extension picks the format, and all five produce the same build. Paths resolve against the manifest's directory, not the directory you ran from.
+Paths resolve against the manifest's directory, not the directory you ran from.
 
 === "pcmp.json5"
 
@@ -79,7 +79,7 @@ The extension picks the format, and all five produce the same build. Paths resol
 | `output` | where it goes |
 | `sources` | extra files and directories that count as build inputs |
 | `ignore` | globs excluded from that input set |
-| `vars` | named values, each becoming a `{token}` and a `PCMP_<NAME>` constant |
+| `vars` | named values |
 | `define` | constants substituted into your source |
 | `header` | lines written above each artifact |
 | `loaders` | an ordered list of `pattern` to `use` pairs |
@@ -115,7 +115,11 @@ Misspell one and `pcmp check` reports [`unreachable-define`](diagnostics.md#unre
 
 ## Tokens
 
-`entry`, `output`, `sources` and `header` take `{token}`. Every var, every axis and `{profile}` expand, `{{` and `}}` are literal braces, and anything else is [`bad-template`](diagnostics.md#bad-template).
+```json5
+output: "dist/{profile}/{name}.luau"
+```
+
+`entry`, `output`, `sources` and `header` take `{token}`. Every var, every axis and `{profile}` expand. Write `{{` and `}}` for a literal brace, and anything else is [`bad-template`](diagnostics.md#bad-template).
 
 A token in a path may not expand to a `.` or `..` segment, so a profile named `..` is refused. A plain `/` is fine, and `{outdir}/app.luau` with `outdir` set to `build/dist` works.
 
@@ -201,8 +205,6 @@ pcmp build dist --axis target=roblox
 
 ## The pcmp API
 
-`pcmp.luau` only.
-
 ```lua
 pcmp.env("VERSION")               -- errors when unset
 pcmp.envOr("VERSION", "v0.0.0")   -- explicit fallback
@@ -213,6 +215,6 @@ pcmp.root                         -- the manifest's directory
 pcmp.darklua                      -- the linked darklua version
 ```
 
-`pcmp` records what these return, so see [Reproducing a build](cli.md#reproducing-a-build) before you use them. There is no `pcmp.exec`, so pass a git SHA in with `--var`.
+These work in `pcmp.luau` and nowhere else. `pcmp` records what they return, so read [Reproducing a build](cli.md#reproducing-a-build) first. There is no `pcmp.exec`, so pass a git SHA in with `--var`.
 
-Manifests run sandboxed. `os`, `io`, `require`, `debug` and `math.random` are unavailable, and `print` goes to stderr.
+Manifests run sandboxed. `os`, `io`, `require`, `debug` and `math.random` are all unavailable. `print` goes to stderr.
