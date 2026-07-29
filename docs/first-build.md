@@ -158,6 +158,6 @@ pcmp build 'dist[flavour=min,target=roblox]'
 pcmp build dist --axis target=roblox
 ```
 
-{% content-ref url="determinism.md" %}
-[determinism.md](determinism.md)
+{% content-ref url="manifest.md" %}
+[manifest.md](manifest.md)
 {% endcontent-ref %}

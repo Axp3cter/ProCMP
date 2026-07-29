@@ -12,7 +12,7 @@ A minified release, a readable debug build, a Roblox variant and a Lune variant,
 {% hint style="success" %}
 **A build stamp costs you nothing.**
 
-Everything a manifest takes from outside itself is written down, the clock included, so `pcmp build --frozen` reproduces a release exactly.
+Put the version and the time in your header. `pcmp build --lock` writes down what the build read, and `pcmp build --frozen` reproduces it exactly, timestamp included.
 {% endhint %}
 
 ## What a profile changes
@@ -69,6 +69,6 @@ Same source, same manifest, one different profile.
 [first-build.md](first-build.md)
 {% endcontent-ref %}
 
-{% content-ref url="determinism.md" %}
-[determinism.md](determinism.md)
+{% content-ref url="manifest.md" %}
+[manifest.md](manifest.md)
 {% endcontent-ref %}

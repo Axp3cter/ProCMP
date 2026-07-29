@@ -20,7 +20,7 @@ use crate::manifest::{Ident, Loader, Loaders, Scalar};
 use crate::report::{Code, Diagnostic, Location};
 
 /// darklua substitutes a define by name, so every injection has to precede every rule
-/// that might read the value.
+/// that reads the value it substitutes.
 pub const INJECT: &str = "inject_global_value";
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]

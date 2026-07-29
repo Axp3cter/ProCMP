@@ -31,8 +31,9 @@ impl Kind {
 /// Walks `root`, keeping every entry `keep` accepts and descending only into accepted
 /// directories.
 ///
-/// A root that does not exist contributes nothing: a `sources` directory may be created
-/// later, and refusing to plan until it is would be worse than noticing when it appears.
+/// A root that does not exist contributes nothing rather than failing. A `sources`
+/// directory can be created after the manifest that names it, and the shape digest notices
+/// the moment it appears.
 pub fn walk(
     root: &AbsPath,
     keep: &dyn Fn(&RelPath, &Kind) -> bool,

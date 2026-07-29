@@ -86,7 +86,7 @@ pub fn plan(plan: &Plan, emit: bool) {
     }
 }
 
-/// What `explain <TASK>` used to print, now reached by naming a task to `plan`.
+/// One task in full, which is what `pcmp plan <TASK>` prints.
 pub fn task(task: &Task, emit: bool) {
     if emit {
         return json(&serde_json::json!({

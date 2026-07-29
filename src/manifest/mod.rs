@@ -271,8 +271,10 @@ impl Scalar {
         }
     }
 
-    /// Whether this can reach Luau intact. A double carries 53 bits of integer, so a
-    /// larger `Int` would arrive as a different number.
+    /// Whether this can reach Luau intact.
+    ///
+    /// A Luau number is an IEEE double, which represents every integer up to 2^53 and not
+    /// every one past it, so a larger `Int` would arrive as a different number.
     pub fn representable(&self) -> bool {
         match self {
             Self::Float(value) => value.is_finite(),

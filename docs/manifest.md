@@ -143,9 +143,28 @@ Every file processed, structure preserved, no bundling.
 Two tasks writing one path is [`output-collision`](diagnostics.md#output-collision). A task writing inside an entry tree is [`output-in-inputs`](diagnostics.md#output-in-inputs).
 
 {% hint style="danger" %}
-An `output` that climbs out of the project with `..` is legal, and occasionally meant.
+An `output` that climbs out of the project with `..` is legal, and sometimes intended.
 
 `pcmp check` reports it as [`output-outside-root`](diagnostics.md#output-outside-root), because it means ProCMP is writing where nobody reading the manifest expects it to.
+{% endhint %}
+
+## Inputs
+
+A build reads every file under the manifest's directory, plus every `sources` root, minus anything `ignore` matches.
+
+```json5
+sources: ["../shared"],
+ignore: ["**/Packages/**"],
+```
+
+Outputs and the cache directory are never inputs, so you do not have to exclude them.
+
+Extension is never a filter either, because a loader can make a `.json` or a `.png` a real input.
+
+{% hint style="danger" %}
+A build can only open what the manifest declares.
+
+A file outside every root fails the build with [`undeclared-input`](diagnostics.md#undeclared-input), naming the exact path, rather than quietly deciding your output. Add the directory that holds it to `sources`.
 {% endhint %}
 
 ## Loaders
@@ -199,7 +218,9 @@ Each combination becomes a task named by its coordinates, and each axis is also 
 
 ## The pcmp API
 
-Luau manifests only, and the manifest's only channel outward. Every entry records what it answered with, which is what [Determinism](determinism.md) is about.
+Luau manifests only, and the manifest's only channel outward.
+
+Everything here is recorded, which is what makes it safe to use. See [Reproducing a build](cli.md#reproducing-a-build).
 
 ```lua
 pcmp.env("VERSION")               -- errors when unset

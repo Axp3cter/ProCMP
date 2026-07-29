@@ -6,9 +6,9 @@
 //! **shape** covers every path under the roots without reading any of them, and **reads**
 //! covers the contents of the files darklua actually opened.
 //!
-//! Shape is where the old design spent its time. It walked every root and hashed every
-//! byte, which made a no-op rebuild linear in the size of the whole repository, at 158 ms
-//! beside a 460 MB `target/`. Walking without reading is flat in repository size.
+//! Shape reads no file contents, only names. That is what keeps a no-op rebuild flat in
+//! the size of the repository rather than linear in it: a directory holding 460 MB costs
+//! one `readdir` per directory it contains, not 460 MB of hashing.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -119,8 +119,9 @@ pub fn shape(scope: &Scope, root: &AbsPath) -> Result<Digest, Diagnostic> {
 
 /// Answers "did a file we read change?".
 ///
-/// A cold build has no recorded read set and falls back to every file in scope, which is
-/// the only time this costs what the old design cost on every build.
+/// A cold build has no recorded read set and falls back to every file in scope. That is
+/// the one build that reads everything, and the record it writes means the next one does
+/// not.
 pub fn reads(
     scope: &Scope,
     root: &AbsPath,

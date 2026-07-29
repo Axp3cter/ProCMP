@@ -1,9 +1,8 @@
 //! Checks a type checker cannot express. All report, none repair.
 //!
-//! Two of these restate darklua's documented rule orderings. The rest are the ones worth
-//! having: a define nothing reads is the commonest real mistake in a manifest, and a build
-//! that reads the clock without writing it down is the commonest way to believe a build is
-//! reproducible when it is not.
+//! Two of these restate darklua's documented rule orderings. The rest catch a manifest
+//! that is valid and does not do what it says: a define nothing reads substitutes nothing,
+//! and a build that reads the clock without recording it cannot be reproduced.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -106,8 +105,8 @@ fn ordering(task: &Task, diagnostics: &mut Vec<Diagnostic>) {
     }
 }
 
-/// Legal, and occasionally meant, but worth saying out loud: `pcmp` will be writing where
-/// nobody reading the manifest expects it to.
+/// Legal, and sometimes intended. Reported because it puts `pcmp` outside the directory
+/// the manifest describes, where a reader of that manifest would not look for it.
 fn escaping(task: &Task, diagnostics: &mut Vec<Diagnostic>) {
     if task.output.as_str().starts_with("..") {
         diagnostics.push(
@@ -123,11 +122,11 @@ fn escaping(task: &Task, diagnostics: &mut Vec<Diagnostic>) {
     }
 }
 
-/// The commonest real mistake: a define whose identifier appears nowhere.
+/// A define whose identifier appears in none of the sources, so it substitutes nothing.
 ///
 /// A substring scan over bytes already in memory, which is why it can afford to be exact
-/// rather than clever. `PCMP_` constants are exempt: every var produces one whether or not
-/// the source reads it.
+/// rather than clever. `PCMP_` constants are exempt, because every var produces one whether
+/// or not the source reads it.
 fn unread(task: &Task, sources: &str, diagnostics: &mut Vec<Diagnostic>) {
     for identifier in task.defines.keys() {
         let name = identifier.as_str();

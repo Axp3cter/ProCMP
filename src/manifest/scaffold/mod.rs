@@ -1,9 +1,9 @@
 //! `pcmp init`.
 //!
-//! The starter manifests are template files rather than `format!` strings. The old design
-//! built them in Rust, which meant doubling every brace in every `{token}` and left the
-//! result unreadable in the one place it most needs to read like what it becomes. These
-//! are the file, with two placeholders.
+//! The starter manifests are template files rather than `format!` strings, because a
+//! `format!` string would need every brace in every `{token}` doubled, in the one place
+//! that most needs to read like the file it becomes. These are the file, with two
+//! placeholders.
 //!
 //! Nothing else is written. A generated `pcmp.schema.json` committed to a repository goes
 //! stale on the next upgrade with nothing to notice. `pcmp schema` emits one on demand, and
@@ -16,7 +16,7 @@ use crate::vfs::{self, AbsPath, RelPath};
 const JSON5: &str = include_str!("json5.tmpl");
 const LUAU: &str = include_str!("luau.tmpl");
 
-/// Where an entry point usually lives, in the order worth trying.
+/// Tried in this order. The first that exists is used, and none existing is an error.
 const LIKELY: &[&str] = &["src/init.luau", "src/main.luau", "init.luau", "main.luau"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]

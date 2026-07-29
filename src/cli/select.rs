@@ -1,9 +1,8 @@
 //! Choosing which tasks to act on.
 //!
 //! A selector is a profile name or an exact task identifier, and `--axis KEY=VALUE`
-//! filters an expansion by coordinate. There is no wildcard: `--axis target=roblox` says
-//! what `'*target=roblox*'` used to say, cannot match something by accident, and needs no
-//! glob dialect to explain.
+//! filters an expansion by coordinate. There is no wildcard, because a task identifier
+//! contains `[`, `]`, `=` and `,`, which every glob dialect reads as syntax.
 
 use std::collections::BTreeMap;
 

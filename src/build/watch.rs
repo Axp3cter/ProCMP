@@ -12,17 +12,19 @@ use crate::plan::Plan;
 use crate::report::{Code, Diagnostic, Exit};
 use crate::vfs::AbsPath;
 
-/// Editors write a file in several operations, and a formatter on save produces more.
+/// A save is a create, a write and a rename, or a truncate and a write. A formatter on
+/// save doubles that. One debounce window turns the lot into one rebuild.
 const SETTLE: Duration = Duration::from_millis(200);
 
 /// Watches the manifest's directory and every extra root the selection declares.
 ///
-/// The plan is resolved once. Re-reading the manifest each cycle would mean a half-saved
-/// manifest producing a cascade of parse errors, and the useful signal, that sources
-/// changed, arrives far more often than the manifest does.
+/// The plan is resolved once, at startup. Re-reading it each cycle would mean a half-saved
+/// manifest producing a run of parse errors, so a manifest edit is reported and otherwise
+/// ignored until the process is restarted.
 pub fn run(
     root: &AbsPath,
     cache: &AbsPath,
+    manifest: &AbsPath,
     plan: &Plan,
     selection: &Plan,
     emit: bool,
@@ -69,15 +71,28 @@ pub fn run(
 
     for batch in receiver {
         // A failed batch means lost events, and a rebuild is cheaper than a wrong answer.
-        let rebuild = batch.map_or(true, |events| {
-            events
-                .iter()
-                .filter(|event| changed(event.kind))
-                .flat_map(|event| &event.paths)
-                .any(|path| ours_not(path, &ours))
-        });
+        let Ok(events) = batch else {
+            render::build(&engine.run(plan, selection), emit, !emit, false);
+            continue;
+        };
 
-        if rebuild {
+        let touched: Vec<&std::path::Path> = events
+            .iter()
+            .filter(|event| changed(event.kind))
+            .flat_map(|event| &event.paths)
+            .map(std::path::PathBuf::as_path)
+            .collect();
+
+        // Rebuilding with the plan from startup would silently ignore the edit, so the
+        // one thing to do about a changed manifest is say so.
+        if touched.iter().any(|path| *path == manifest.as_std()) {
+            render::problem(format!(
+                "note: `{manifest}` changed. This run is using the plan it had at startup, \
+                 so restart `pcmp watch` to pick the edit up"
+            ));
+        }
+
+        if touched.iter().any(|path| ours_not(path, &ours)) {
             render::build(&engine.run(plan, selection), emit, !emit, false);
         }
     }

@@ -142,8 +142,8 @@ fn in_profile(profile: &mut Profile) {
         empty_lists(darklua);
     }
 
-    // An empty `loaders` table is the same ambiguity, and an empty map of loaders is not
-    // a thing anyone means.
+    // An empty `loaders` table is the same ambiguity, and here the two readings agree:
+    // an empty map and an empty list both mean no loaders.
     if matches!(&profile.loaders, Some(Loaders::Map(map)) if map.is_empty()) {
         profile.loaders = Some(Loaders::List(Vec::new()));
     }
@@ -222,7 +222,7 @@ fn harden(lua: &Lua, origin: &str) -> Result<(), Diagnostic> {
 /// Installs `pcmp`.
 ///
 /// The reader is shared rather than borrowed because mlua requires a closure to be
-/// `'static`. It is cheap: one `Rc` per entry point, cloned once at startup.
+/// `'static`. It costs five clones, one per entry point, once per evaluation.
 fn install(lua: &Lua, origin: &str, root: &AbsPath, reader: &Rc<Reader>) -> Result<(), Diagnostic> {
     let api = lua
         .create_table()

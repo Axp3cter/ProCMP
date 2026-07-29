@@ -7,13 +7,9 @@
 * [Install](install.md)
 * [Your first build](first-build.md)
 
-## Concepts
-
-* [Manifest](manifest.md)
-* [Determinism](determinism.md)
-* [darklua](darklua.md)
-
 ## Reference
 
+* [Manifest](manifest.md)
+* [darklua](darklua.md)
 * [CLI](cli.md)
 * [Diagnostics](diagnostics.md)

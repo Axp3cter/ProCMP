@@ -13,8 +13,10 @@ use crate::manifest::ledger::Ledger;
 use crate::report::Diagnostic;
 use crate::vfs::{self, AbsPath, Digest, RelPath, digest};
 
-/// Bumped when the shape of a record changes. A record that does not match is ignored
-/// rather than migrated: rebuilding is cheap and a wrong cache hit is not.
+/// Bumped when the shape of a record changes.
+///
+/// A record that does not match is ignored rather than migrated. Ignoring one costs a
+/// rebuild. Migrating one wrongly costs a wrong artifact that nothing will notice.
 const VERSION: u32 = 1;
 
 /// One task's last successful build.

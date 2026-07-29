@@ -305,8 +305,8 @@ impl Code {
 
     /// The long form, printed by `pcmp explain <CODE>`.
     ///
-    /// One exhaustive match rather than several: the compiler checking that every code
-    /// has a description is the whole reason this is not a lookup table.
+    /// One match rather than one per phase, and a match rather than a table: the compiler
+    /// refusing to build until every code has a description is the entire point.
     #[allow(
         clippy::too_many_lines,
         reason = "a catalogue is as long as the catalogue"

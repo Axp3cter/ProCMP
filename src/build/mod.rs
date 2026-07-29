@@ -118,8 +118,9 @@ impl Engine {
         // outside every root and needs no excluding.
         let cache = self.cache.relative_to(&self.root);
 
-        // Shape is a pure function of a scope, and a matrix's combinations usually share
-        // one, so it is computed per distinct scope rather than per task.
+        // Shape is a pure function of a scope. Combinations of one profile share a scope
+        // unless an axis overlay changes `sources` or `ignore`, so this is computed once
+        // per distinct scope rather than once per task.
         let shapes: Mutex<BTreeMap<Scope, Digest>> = Mutex::new(BTreeMap::new());
 
         let mut tasks: Vec<TaskReport> = std::thread::scope(|threads| {
@@ -354,7 +355,7 @@ fn read_set(
     found
 }
 
-/// darklua's own `lua_extension`, so the header applies to whatever it emits as source
+/// darklua's own `lua_extension`, so the header applies to the extension darklua writes
 /// rather than to a list this crate keeps of its own.
 fn lua_extension(task: &Task) -> Option<&str> {
     task.config

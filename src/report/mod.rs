@@ -93,8 +93,8 @@ impl Diagnostic {
 
     /// Fills in a location only when the finding does not already know a better one.
     ///
-    /// A caller usually knows the profile, and the leaf that failed usually knows the field.
-    /// The leaf wins.
+    /// A caller knows the profile. The leaf that failed knows the field. The narrower of
+    /// the two is the useful one, so the first location set is the one kept.
     #[must_use]
     pub fn within(mut self, at: Location) -> Self {
         self.at.get_or_insert(at);

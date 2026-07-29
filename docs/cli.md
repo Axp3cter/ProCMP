@@ -41,12 +41,41 @@ $ pcmp build
 
 Tasks run in parallel. A failure is collected rather than aborted on, so one run names every task that went wrong.
 
+A task is skipped when its configuration, its sources and its artifacts are all unchanged. `--why` names whichever of those moved.
+
 ```
 $ pcmp plan --why
   built  dev  dist/dev/app.luau  (a source file changed)
 ```
 
 `pcmp plan <TASK>` prints everything one task resolved to, including the darklua configuration it compiles to.
+
+## Reproducing a build
+
+A manifest may read the clock, an environment variable, or a file.
+
+```lua
+vars = { version = pcmp.envOr("VERSION", "dev"), built = pcmp.now() }
+```
+
+Those change between runs, so `pcmp` writes down what it read.
+
+```sh
+pcmp build --lock      # build, and record what it read
+pcmp build --frozen    # build from that record, and fail if anything differs
+```
+
+`--frozen` answers the manifest from `pcmp.lock` instead of from the outside, so `pcmp.now()` returns the instant the lock pinned. That is why a build timestamp costs you nothing.
+
+Commit `pcmp.lock`. A diff of it in review shows exactly what changed about a build.
+
+Ignore `.pcmp/`, which is the local build cache and is disposable.
+
+{% hint style="info" %}
+`pcmp check` reports [`unrecorded-reading`](diagnostics.md#unrecorded-reading) when a manifest reads something and no lock records it.
+
+The warning goes away once a lock exists.
+{% endhint %}
 
 ## Machine-readable output
 

@@ -296,6 +296,7 @@ pub fn run(cli: &Cli) -> Result<Exit, Diagnostic> {
             build::watch::run(
                 &project.root,
                 &project.cache,
+                &project.manifest_path,
                 &project.plan,
                 &selection,
                 cli.json,

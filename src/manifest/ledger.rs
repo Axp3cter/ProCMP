@@ -28,9 +28,11 @@ pub enum Reading {
 
 /// What a reading yielded.
 ///
-/// A file records its digest rather than its contents: contents can be large, and on
-/// replay the right behaviour is to read the file and check it, not to resurrect a stale
-/// copy of it.
+/// A file records its digest rather than its contents.
+///
+/// A lock is committed and read in review, which a file's bytes would ruin. On replay the
+/// right behaviour is to read the file and check it against the digest, because
+/// resurrecting a stale copy would hide the very change the check exists to find.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum Recorded {
