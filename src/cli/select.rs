@@ -63,7 +63,8 @@ pub fn pairs(arguments: &[String]) -> Result<BTreeMap<String, String>, Diagnosti
                 .split_once('=')
                 .map(|(key, value)| (key.to_owned(), value.to_owned()))
                 .ok_or_else(|| {
-                    Diagnostic::new(Code::BadName, format!("`{argument}` is not KEY=VALUE"))
+                    Diagnostic::new(Code::BadArgument, format!("`{argument}` is not KEY=VALUE"))
+                        .help("write it as `name=value`, with no space around the `=`")
                 })
         })
         .collect()

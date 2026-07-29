@@ -26,12 +26,10 @@ pub const DARKLUA: &str = "0.19.0";
 use clap::Parser;
 
 fn main() -> std::process::ExitCode {
-    let code = match cli::run(&cli::Cli::parse()) {
+    let cli = cli::Cli::parse();
+    let code = match cli::run(&cli) {
         Ok(code) => code,
-        Err(diagnostic) => {
-            cli::render::problem(cli::render::rendered(&diagnostic));
-            diagnostic.code.exit()
-        }
+        Err(failure) => cli::fail(&cli, &failure),
     };
 
     std::process::ExitCode::from(code as u8)

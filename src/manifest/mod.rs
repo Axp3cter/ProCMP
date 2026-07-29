@@ -121,8 +121,10 @@ pub struct Profile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub header: Option<Vec<String>>,
 
+    /// darklua takes the first matching pattern, so this is a list rather than a map:
+    /// order decides which loader wins, and only a list has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub loaders: Option<Loaders>,
+    pub loaders: Option<Vec<Loader>>,
 
     /// darklua's configuration, verbatim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -156,18 +158,6 @@ impl Axis {
             Self::Overlays(overlays) => overlays.get(value),
         }
     }
-}
-
-/// darklua takes the first matching pattern, so order decides which loader wins.
-///
-/// Both spellings are accepted. A data format writes its maps in the order they appear,
-/// so the map form is meaningful there, whereas a Luau table has no order, which is why
-/// [`Code::LoadersUnordered`] rejects it from a Luau manifest.
-#[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
-#[serde(untagged)]
-pub enum Loaders {
-    List(Vec<Loader>),
-    Map(Map<String, Value>),
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]

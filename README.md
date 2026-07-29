@@ -20,7 +20,11 @@ Links in [darklua](https://darklua.com) as a library.
 
 ## Documentation
 
-[procmp.gitbook.io](https://procmp.gitbook.io) or [docs/](docs/)
+[proton-utilities.github.io/ProCMP](https://proton-utilities.github.io/ProCMP/), built from [docs/](docs/) with [Zensical](https://zensical.org).
+
+```sh
+uvx zensical serve
+```
 
 ## License
 

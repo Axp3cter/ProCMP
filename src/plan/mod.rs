@@ -314,7 +314,7 @@ fn task(
     let config = report(
         Config::assemble(
             profile.darklua.as_ref(),
-            profile.loaders.as_ref(),
+            profile.loaders.as_deref(),
             &defines,
             at,
         ),
@@ -515,35 +515,59 @@ fn collisions(tasks: &[Task], diagnostics: &mut Vec<Diagnostic>) {
         }
     }
 
-    // Including a task against itself, which is the usual way this happens: an `entry`
-    // of `src` with an `output` of `src/out` feeds the next build its own artifacts.
-    for task in tasks {
-        for other in tasks {
-            let inside = other.output.starts_with(&task.entry)
-                || task
-                    .sources
-                    .iter()
-                    .any(|root| other.output.starts_with(root));
+    // One finding per writing task, not one per task that would read it back. An output
+    // landing inside three tasks' roots is one mistake with one fix.
+    for writer in tasks {
+        // Its own roots first: a task feeding itself is the usual way this happens and the
+        // clearer thing to say when both are true.
+        let found = swallowed(&writer.output, writer)
+            .map(|(field, root)| (&writer.id, field, root))
+            .or_else(|| {
+                tasks.iter().find_map(|reader| {
+                    swallowed(&writer.output, reader).map(|(field, root)| (&reader.id, field, root))
+                })
+            });
 
-            if !inside {
-                continue;
-            }
+        let Some((owner, field, root)) = found else {
+            continue;
+        };
 
-            let message = if other.id == task.id {
-                format!(
-                    "`{}` writes `{}` inside its own entry",
-                    task.id, other.output
-                )
-            } else {
-                format!("`{}` writes inside `{}`'s sources", other.id, task.id)
-            };
+        let message = if *owner == writer.id {
+            format!(
+                "`{}` writes `{}` inside its own `{field}`",
+                writer.id, writer.output
+            )
+        } else {
+            format!(
+                "`{}` writes `{}` inside `{owner}`'s `{field}`",
+                writer.id, writer.output
+            )
+        };
 
-            diagnostics.push(
-                Diagnostic::new(Code::OutputInInputs, message)
-                    .help("move the output outside every root, or exclude it with `ignore`"),
-            );
-        }
+        diagnostics.push(
+            Diagnostic::new(Code::OutputInInputs, message)
+                .help(format!(
+                    "`{root}` is a build input, so the next build would read this artifact"
+                ))
+                .help("move the output outside every root, or exclude it with `ignore`"),
+        );
     }
+}
+
+/// Which of `reader`'s roots contains `output`, and the field that named that root.
+///
+/// `entry` first, because a task that swallows its own output usually does it through the
+/// entry directory rather than through an extra source root.
+fn swallowed<'t>(output: &RelPath, reader: &'t Task) -> Option<(&'static str, &'t RelPath)> {
+    if output.starts_with(&reader.entry) {
+        return Some(("entry", &reader.entry));
+    }
+
+    reader
+        .sources
+        .iter()
+        .find(|root| output.starts_with(root))
+        .map(|root| ("sources", root))
 }
 
 impl fmt::Display for TaskId {

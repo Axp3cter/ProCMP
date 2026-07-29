@@ -1,6 +1,7 @@
 ---
+title: CLI
 description: Selecting tasks, reading a build, and what an exit code means.
-icon: terminal
+icon: lucide/terminal
 ---
 
 # CLI
@@ -21,22 +22,20 @@ pcmp build dist --axis target=roblox
 
 A selector is a profile name or an exact task identifier. `--axis KEY=VALUE` filters an expansion by coordinate, and repeats.
 
-{% hint style="info" %}
-There is no wildcard.
+!!! info "There is no wildcard"
 
-`--axis` says what a glob would have said, cannot match something by accident, and needs no dialect to explain. A selection that matches nothing is an error rather than a quiet success.
+    `--axis` says what a glob would have said, cannot match something by accident, and needs no dialect to explain. A selection that matches nothing is [`no-such-task`](diagnostics.md#no-such-task) rather than a quiet success.
 
-Because a task identifier is `profile[axis=value]`, a profile name cannot contain `[`, `]`, `,` or `=`. That is `bad-name`.
-{% endhint %}
+    Because a task identifier is `profile[axis=value]`, a profile name cannot contain `[`, `]`, `,` or `=`. That is [`bad-name`](diagnostics.md#bad-name).
 
 ## Reading a build
 
-```
+```console
 $ pcmp build
 plan  9b35cd36a0d9
 
-  built   dev      dist/dev/app.luau      12 ms
-  cached  release  dist/release/app.luau  0 ms
+  built   dev      dist/dev/app.luau
+  cached  release  dist/release/app.luau
 
 1 built, 1 cached, 0 failed
 ```
@@ -47,7 +46,7 @@ Tasks run in parallel. A failure is collected rather than aborted on, so one run
 
 A task is skipped when its configuration, its sources and its artifacts are all unchanged. `--why` names whichever of those moved.
 
-```
+```console
 $ pcmp plan --why
 plan  9b35cd36a0d9
 
@@ -60,6 +59,32 @@ plan  9b35cd36a0d9
 `plan --why` builds nothing, so it says `stale` and `fresh` where a build says `built` and `cached`.
 
 `pcmp plan <TASK>` prints everything one task resolved to, including the darklua configuration it compiles to.
+
+Durations are left out by default, in both output modes, so two runs of the same build print the same bytes. `--timings` puts them back.
+
+```console
+$ pcmp build --timings
+  built   dev      dist/dev/app.luau      12 ms
+  cached  release  dist/release/app.luau  0 ms
+```
+
+## Watching
+
+```console
+$ pcmp watch
+watching  /home/you/app
+plan      9b35cd36a0d9
+
+  built   dev  dist/dev/app.luau
+
+1 built, 0 cached, 0 failed
+```
+
+Every `sources` root gets a `watching` line of its own, and each rebuild is separated by a blank line so consecutive reports do not read as one.
+
+!!! warning "The plan is resolved once, at startup"
+
+    Re-reading the manifest on every change would mean a half-saved file producing a run of parse errors. An edit to the manifest is reported on stderr and otherwise ignored until you restart.
 
 ## Reproducing a build
 
@@ -78,39 +103,44 @@ pcmp build --frozen    # build from that record, and fail if anything differs
 
 `--frozen` answers the manifest from `pcmp.lock` instead of from the outside, so `pcmp.now()` returns the instant the lock pinned. That is why a build timestamp costs you nothing.
 
-Commit `pcmp.lock`. A diff of it in review shows exactly what changed about a build.
+```console
+$ pcmp build --frozen
+plan  9b35cd36a0d9
 
-Ignore `.pcmp/`, which is the local build cache and is disposable.
+  built   dev      dist/dev/app.luau
+  built   release  dist/release/app.luau
+
+2 built, 0 cached, 0 failed
+2 reproduced, 0 differing
+```
+
+Commit `pcmp.lock`. A diff of it in review shows exactly what changed about a build.
 
 ### Pinning the clock
 
 Whatever `pcmp.now()` returns lands in the resolved task, and the plan digest covers the task, so a manifest that calls it resolves to a different task every second and an ordinary build never hits the cache. Pin the clock and caching comes back.
 
-{% tabs %}
-{% tab title="--now" %}
-```sh
-pcmp build --now 2026-01-01T00:00:00Z
-```
-{% endtab %}
+=== "--now"
 
-{% tab title="SOURCE_DATE_EPOCH" %}
-```sh
-SOURCE_DATE_EPOCH=1767225600 pcmp build
-```
-{% endtab %}
-{% endtabs %}
+    ```sh
+    pcmp build --now 2026-01-01T00:00:00Z
+    ```
+
+=== "SOURCE_DATE_EPOCH"
+
+    ```sh
+    SOURCE_DATE_EPOCH=1767225600 pcmp build
+    ```
 
 The two are the same instant written two ways. `--now` takes an RFC 3339 instant in UTC to the second and beats `SOURCE_DATE_EPOCH`, which takes seconds since the Unix epoch and is the convention the rest of a release pipeline already reads. A frozen build beats both, because the lock is the point of freezing.
 
-{% hint style="info" %}
-`pcmp check` reports [`unrecorded-reading`](diagnostics.md#unrecorded-reading) when a manifest reads something and no lock records it.
+!!! info "Until a lock exists"
 
-The warning goes away once a lock exists.
-{% endhint %}
+    `pcmp check` reports [`unrecorded-reading`](diagnostics.md#unrecorded-reading) when a manifest reads something and no lock records it. The warning goes away once a lock exists.
 
 ## Machine-readable output
 
-`--json` is byte-identical for the same build, so it can be diffed. Durations are left out for that reason, and `--timings` puts them back.
+`--json` is byte-identical for the same build, so it can be diffed.
 
 ```sh
 pcmp build --json | jq '.tasks[] | select(.status == "failed")'
@@ -119,39 +149,48 @@ pcmp check --json | jq '[.[] | select(.severity == "error")] | length'
 
 Every diagnostic has the same shape wherever it appears.
 
-<details>
+??? note "The diagnostic shape"
 
-<summary>The diagnostic shape</summary>
+    ```json
+    {
+      "code": "missing-output",
+      "severity": "error",
+      "at": "profiles.release",
+      "message": "no `output` after inheritance",
+      "help": "a template, e.g. \"dist/{profile}/app.luau\"",
+      "source": null
+    }
+    ```
 
-```json
-{
-  "code": "missing-output",
-  "severity": "error",
-  "at": "profiles.release",
-  "message": "no `output` after inheritance",
-  "help": "a template, e.g. \"dist/{profile}/app.luau\"",
-  "source": null
-}
-```
+    `code`
 
-| Field | |
-| --- | --- |
-| `code` | stable, and never reused for another meaning. See [Diagnostics](diagnostics.md) |
-| `severity` | `error` or `warning` |
-| `at` | a manifest key path such as `profiles.release.darklua.rules[2]` |
-| `message` | one line, lowercase, no trailing stop |
-| `help` | zero or more lines of what to do |
-| `source` | the underlying operating system error, when there was one |
+    :   Stable, and never reused for another meaning. See [Diagnostics](diagnostics.md).
 
-`at` is a key path rather than a line number, because a value a Luau manifest computed does not have one.
+    `severity`
 
-</details>
+    :   `error` or `warning`.
 
-{% hint style="info" %}
-Findings that are the command's answer go to stdout. Findings that mean the command failed go to stderr, so `pcmp build > report.json` still tells you why it did not work.
+    `at`
 
-With `--json` both go to stdout, because that is where machine output lives and the exit code already says which happened.
-{% endhint %}
+    :   A manifest key path such as `profiles.release.darklua.rules[2]`. A key path rather than a line number, because a value a Luau manifest computed does not have one.
+
+    `message`
+
+    :   One line, lowercase, no trailing stop.
+
+    `help`
+
+    :   Zero or more lines of what to do.
+
+    `source`
+
+    :   The operating system's own words, when something outside `pcmp` refused.
+
+!!! info "Which stream a finding goes to"
+
+    Findings that are the command's answer go to stdout. Findings that mean the command failed go to stderr, so `pcmp build > report.json` still tells you why it did not work.
+
+    With `--json` both go to stdout, because that is where machine output lives and the exit code already says which happened.
 
 ## Exit codes
 
@@ -159,17 +198,17 @@ With `--json` both go to stdout, because that is where machine output lives and 
 | --- | --- |
 | `0` | success |
 | `1` | a task failed, or a `--frozen` build did not reproduce |
-| `2` | the manifest could not be loaded or resolved |
+| `2` | the command line or the manifest could not be read, or the plan could not be resolved |
 | `3` | linting failed |
 
 ## In CI
 
-{% code title=".github/workflows/build.yml" %}
-```yaml
+```yaml title=".github/workflows/build.yml"
 - run: pcmp check --strict
 - run: pcmp build  --var version=${{ github.ref_name }}
 - run: pcmp build  --frozen
 ```
-{% endcode %}
 
 `--frozen` rebuilds from `pcmp.lock` and proves the artifacts match. It is a stronger check than building twice and comparing, and unlike that check it still works when a manifest reads the clock.
+
+*[RFC 3339]: An internet date and time format. pcmp writes and accepts it in UTC, to the second, as 2026-01-01T00:00:00Z

@@ -13,7 +13,7 @@ use mlua::{Lua, LuaOptions, LuaSerdeExt, StdLib, Value, VmState};
 use serde_json::{Map, Value as Json};
 
 use super::ledger::Reader;
-use super::{Axis, Loaders, Manifest, Profile};
+use super::{Axis, Manifest, Profile};
 use crate::report::{Code, Diagnostic};
 use crate::vfs::{self, AbsPath, RelPath, digest};
 
@@ -42,6 +42,9 @@ const EXHAUSTED: &str = "evaluation budget exhausted";
 
 /// Likewise for an unset variable, which is a manifest asking for something that is not
 /// there rather than a manifest that is wrong.
+///
+/// This must stay a prefix of what [`install`] raises from `pcmp.env`. A Lua error is a
+/// string by the time it arrives, so there is nothing else to match on.
 const UNSET: &str = "is not set. Pass `--env";
 
 pub fn eval(
@@ -140,12 +143,6 @@ const LISTS: &[&str] = &[
 fn in_profile(profile: &mut Profile) {
     if let Some(darklua) = profile.darklua.as_mut() {
         empty_lists(darklua);
-    }
-
-    // An empty `loaders` table is the same ambiguity, and here the two readings agree:
-    // an empty map and an empty list both mean no loaders.
-    if matches!(&profile.loaders, Some(Loaders::Map(map)) if map.is_empty()) {
-        profile.loaders = Some(Loaders::List(Vec::new()));
     }
 
     for axis in profile.axes.values_mut() {

@@ -10,6 +10,7 @@ use super::{Exit, Severity};
 /// Which stage of a run can report a code, and how the reference groups them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
+    Invocation,
     Manifest,
     Resolution,
     Plan,
@@ -19,6 +20,7 @@ pub enum Phase {
 
 impl Phase {
     const ORDER: &'static [Self] = &[
+        Self::Invocation,
         Self::Manifest,
         Self::Resolution,
         Self::Plan,
@@ -28,6 +30,7 @@ impl Phase {
 
     const fn title(self) -> &'static str {
         match self {
+            Self::Invocation => "Reading the command line",
             Self::Manifest => "Reading the manifest",
             Self::Resolution => "Resolving the plan",
             Self::Plan => "Checking the plan",
@@ -38,6 +41,9 @@ impl Phase {
 
     const fn summary(self) -> &'static str {
         match self {
+            Self::Invocation => {
+                "Reported before anything is read. `clap` rejects an unknown flag or an unknown value on its own, so what is left here is an argument whose *shape* is wrong."
+            }
             Self::Manifest => {
                 "Nothing can be collected past a manifest that will not parse, so any of these stops the run on its own."
             }
@@ -59,6 +65,9 @@ impl Phase {
 /// may not be reused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Code {
+    // ── invocation ────────────────────────────────────────────────────────────────
+    BadArgument,
+
     // ── manifest ──────────────────────────────────────────────────────────────────
     NoManifest,
     UnknownFormat,
@@ -84,10 +93,8 @@ pub enum Code {
     BadLoader,
     BadLoaderPattern,
     BadGlob,
-    LoadersUnordered,
     EmptyAxis,
     NoTasks,
-    Unresolved,
 
     // ── plan validation ───────────────────────────────────────────────────────────
     OutputCollision,
@@ -117,6 +124,7 @@ pub enum Code {
 
 /// Every variant, so `explain` can list them and the CLI can resolve a slug.
 pub const ALL: &[Code] = &[
+    Code::BadArgument,
     Code::NoManifest,
     Code::UnknownFormat,
     Code::Unreadable,
@@ -139,10 +147,8 @@ pub const ALL: &[Code] = &[
     Code::BadLoader,
     Code::BadLoaderPattern,
     Code::BadGlob,
-    Code::LoadersUnordered,
     Code::EmptyAxis,
     Code::NoTasks,
-    Code::Unresolved,
     Code::OutputCollision,
     Code::OutputInInputs,
     Code::NoSuchTask,
@@ -168,6 +174,7 @@ impl Code {
     /// The stable kebab-case name, as printed in `error[missing-output]`.
     pub const fn slug(self) -> &'static str {
         match self {
+            Self::BadArgument => "bad-argument",
             Self::NoManifest => "no-manifest",
             Self::UnknownFormat => "unknown-format",
             Self::Unreadable => "unreadable",
@@ -190,10 +197,8 @@ impl Code {
             Self::BadLoader => "bad-loader",
             Self::BadLoaderPattern => "bad-loader-pattern",
             Self::BadGlob => "bad-glob",
-            Self::LoadersUnordered => "loaders-unordered",
             Self::EmptyAxis => "empty-axis",
             Self::NoTasks => "no-tasks",
-            Self::Unresolved => "unresolved",
             Self::OutputCollision => "output-collision",
             Self::OutputInInputs => "output-in-inputs",
             Self::NoSuchTask => "no-such-task",
@@ -232,9 +237,9 @@ impl Code {
 
     /// What a run exits with when this is the worst thing that happened.
     ///
-    /// Distinct from [`Self::recoverable`], which is about whether a *phase* can keep
-    /// collecting. Reporting every bad profile in one run and exiting 2 because the
-    /// manifest did not resolve are two different questions.
+    /// Distinct from [`Self::phase`], which is about whether a phase can keep collecting.
+    /// Reporting every bad profile in one run and exiting 2 because the manifest did not
+    /// resolve are two different questions.
     pub const fn exit(self) -> Exit {
         match self {
             Self::MissingEntryFile
@@ -264,6 +269,8 @@ impl Code {
     /// Where in a run this can come from.
     pub const fn phase(self) -> Phase {
         match self {
+            Self::BadArgument => Phase::Invocation,
+
             Self::NoManifest
             | Self::UnknownFormat
             | Self::Unreadable
@@ -273,9 +280,7 @@ impl Code {
             | Self::Budget
             | Self::UnsetEnv => Phase::Manifest,
 
-            Self::OutputCollision | Self::OutputInInputs | Self::NoSuchTask | Self::Unresolved => {
-                Phase::Plan
-            }
+            Self::OutputCollision | Self::OutputInInputs | Self::NoSuchTask => Phase::Plan,
 
             Self::MissingEntryFile
             | Self::UndeclaredInput
@@ -313,6 +318,13 @@ impl Code {
     )]
     pub const fn description(self) -> &'static str {
         match self {
+            Self::BadArgument => {
+                "\
+An argument's value is not the shape its flag takes. `--env`, `--var`, `--define` and
+`--axis` each take `KEY=VALUE`, `--now` takes an RFC 3339 instant in UTC to the second,
+and `pcmp explain` takes a code from `pcmp explain` with no argument."
+            }
+
             Self::NoManifest => {
                 "\
 No manifest was found in the working directory or any directory above it. `pcmp` looks
@@ -327,16 +339,12 @@ extension and never from the content, so a JSON manifest called `pcmp.conf` is n
 readable. Supported: json5, json, jsonc, toml, luau."
             }
 
-            Self::Unreadable => {
-                "\
-A file could not be read or a directory could not be listed. The underlying operating
-system error is attached to the diagnostic."
-            }
+            Self::Unreadable => "The operating system refused a read. Its own message follows.",
 
             Self::Syntax => {
                 "\
 The manifest is not valid in the format its extension declares. The parser's own message
-follows, with a line and column where the parser reports one."
+follows, with a line and column where it reports one."
             }
 
             Self::NotATable => {
@@ -346,8 +354,7 @@ missing `return`, which makes the chunk evaluate to nil."
             }
 
             Self::Eval => {
-                "\
-A Luau manifest raised an error while evaluating. The Luau traceback follows."
+                "A Luau manifest raised an error while evaluating. Its traceback follows."
             }
 
             Self::Budget => {
@@ -392,14 +399,14 @@ selected on the command line unambiguously."
 
             Self::MissingEntry => {
                 "\
-The profile declares no `entry`, and neither does anything it extends. `entry` is a file
-to bundle or a directory to process as a tree."
+Neither the profile nor anything it extends declares an `entry`, which is a file to
+bundle or a directory to process as a tree."
             }
 
             Self::MissingOutput => {
                 "\
-The profile declares no `output`, and neither does anything it extends. `output` is a
-template, so it may vary by profile or axis: \"dist/{profile}/app.luau\"."
+Neither the profile nor anything it extends declares an `output`, which is a template and
+so may vary by profile or axis: \"dist/{profile}/app.luau\"."
             }
 
             Self::BadTemplate => {
@@ -450,7 +457,7 @@ string/zstd, string/gzip and string/zlib, with buffer and bytes likewise."
 
             Self::BadLoaderPattern => {
                 "\
-A loader's `pattern` is not a valid filter pattern. Patterns match a file's path relative
+A loader's `pattern` is not one darklua accepts. A pattern matches a file's path relative
 to the entry."
             }
 
@@ -460,30 +467,12 @@ An `ignore` entry is not a valid glob. Globs match each file's path relative to 
 it was found under."
             }
 
-            Self::LoadersUnordered => {
-                "\
-A Luau manifest declared `loaders` as a table keyed by pattern. darklua takes the first
-matching pattern, and a Luau table has no order, so which loader wins would be decided by
-hash order. Write an array of `{ pattern = ..., use = ... }` instead. Data formats may
-use either spelling, because their maps preserve the order they were written in."
-            }
-
-            Self::EmptyAxis => {
-                "\
-An axis lists no values, so its profile expands to zero tasks. Remove the axis, or give
-it values."
-            }
+            Self::EmptyAxis => "An axis lists no values, so its profile expands to zero tasks.",
 
             Self::NoTasks => {
                 "\
 The manifest declares no profiles, so there is nothing to build. A `templates` entry is
 never built on its own."
-            }
-
-            Self::Unresolved => {
-                "\
-The manifest was read, but the plan it describes could not be built. The findings printed
-above this one say why. This is only the summary. Nothing was built."
             }
 
             Self::OutputCollision => {
@@ -501,9 +490,10 @@ back in as an input. Move the output outside every root, or exclude it with `ign
 
             Self::NoSuchTask => {
                 "\
-No task matched the selection, or `pcmp explain` was given a code that does not exist. A
-selector is a profile name or an exact task identifier. Use `--axis KEY=VALUE` to filter
-an expansion by coordinate, and `pcmp explain` with no argument for the list of codes."
+No task matched the selection. A selector is a profile name or an exact task identifier,
+and `--axis KEY=VALUE` filters an expansion by coordinate. There is no wildcard, because
+a task identifier contains `[`, `]`, `=` and `,`, which every glob dialect reads as
+syntax."
             }
 
             Self::MissingEntryFile => {
@@ -528,7 +518,9 @@ printed with the error, and `pcmp plan <TASK>` shows the same thing without buil
 
             Self::ProcessFailed => {
                 "\
-darklua reported an error while transforming this task's sources."
+darklua reported an error while transforming this task's sources. Its own message
+follows. When the error is a file darklua could not find, the code is
+`undeclared-input` instead."
             }
 
             Self::NoOutput => {
@@ -619,23 +611,27 @@ into a template and `extends` it, or give one of them an axis."
 /// Written by `pcmp explain --format markdown`, and checked in CI against the copy in the
 /// repository. Generating it is the only way a reference of this size stays true: the
 /// binary is the source, and a page that disagrees with the binary fails the build.
+///
+/// The heading of each entry is its slug, so `toc.permalink` gives every code the anchor
+/// the rest of the documentation links to, and Zensical's link validation then checks
+/// those anchors on every build.
 pub fn reference() -> String {
     let mut out = String::from(
         "---\n\
+         title: Diagnostics\n\
          description: Every code pcmp can report, and what to do about it.\n\
-         icon: circle-exclamation\n\
+         icon: lucide/circle-alert\n\
          ---\n\n\
          # Diagnostics\n\n\
          A code names one failure and never another. A message may be reworded, a code may \
          not be reused.\n\n\
-         Every one of these is also available from the binary.\n\n\
          ```sh\n\
          pcmp explain missing-output\n\
          ```\n\n\
-         {% hint style=\"info\" %}\n\
-         This page is generated by `pcmp explain --format markdown`, and CI fails when the \
-         committed copy stops matching the binary.\n\
-         {% endhint %}\n",
+         !!! info \"Generated from the binary\"\n\n\
+         \x20   `pcmp explain --format markdown` writes this page, and CI fails when the \
+         committed copy stops matching what the binary would print. Nothing here can \
+         describe a version of `pcmp` you are not running.\n",
     );
 
     for phase in Phase::ORDER {
@@ -646,9 +642,12 @@ pub fn reference() -> String {
                 Severity::Error => "error",
                 Severity::Warning => "warning",
             };
+
+            // A definition list rather than a sentence, so severity and exit code are one
+            // scannable block on a page of forty-four entries.
             let _ = write!(
                 out,
-                "\n### {}\n\n`{severity}`, exit code `{}`\n\n{}\n",
+                "\n### {}\n\n`{severity}`\n:   Exits `{}`.\n\n{}\n",
                 code.slug(),
                 code.exit() as u8,
                 code.description()

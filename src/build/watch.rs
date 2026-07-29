@@ -28,6 +28,7 @@ pub fn run(
     plan: &Plan,
     selection: &Plan,
     emit: bool,
+    timings: bool,
 ) -> Result<Exit, Diagnostic> {
     let (sender, receiver) = mpsc::channel();
     let mut debouncer = new_debouncer(SETTLE, None, sender).map_err(|error| {
@@ -64,7 +65,7 @@ pub fn run(
     );
 
     let engine = Engine::new(root.clone(), cache.clone(), true);
-    let cycle = || render::build(&engine.run(plan, selection), emit, !emit, false);
+    let cycle = || render::build(&engine.run(plan, selection), emit, timings, false);
 
     // Nothing else says the process is alive or which directories reach it, and `--json`
     // is a stream of build reports that a banner would make unparseable.

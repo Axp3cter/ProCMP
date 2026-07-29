@@ -5,8 +5,8 @@
 
 use std::rc::Rc;
 
-use super::{Loaders, Manifest, ledger::Reader, luau};
-use crate::report::{Code, Diagnostic, Location};
+use super::{Manifest, ledger::Reader, luau};
+use crate::report::{Code, Diagnostic};
 use crate::vfs::{self, AbsPath};
 
 /// Discovery order. JSON5 leads because it is what `pcmp init` writes. Luau comes last
@@ -118,17 +118,11 @@ pub fn parse(
     root: &AbsPath,
     reader: &Rc<Reader>,
 ) -> Result<Manifest, Diagnostic> {
-    let manifest = match format {
-        Format::Luau => luau::eval(text, origin, root, reader)?,
-        Format::Json => json5::from_str(text).map_err(|error| syntax(origin, format, &error))?,
-        Format::Toml => toml::from_str(text).map_err(|error| syntax(origin, format, &error))?,
-    };
-
-    if format == Format::Luau {
-        ordered_loaders(&manifest)?;
+    match format {
+        Format::Luau => luau::eval(text, origin, root, reader),
+        Format::Json => json5::from_str(text).map_err(|error| syntax(origin, format, &error)),
+        Format::Toml => toml::from_str(text).map_err(|error| syntax(origin, format, &error)),
     }
-
-    Ok(manifest)
 }
 
 /// Covers both a parse failure and a manifest that parses into something that is not one:
@@ -141,52 +135,4 @@ fn syntax(origin: &str, format: Format, error: &impl std::fmt::Display) -> Diagn
         format!("`{origin}` is not a valid {} manifest", format.name()),
     )
     .help(error.to_string())
-}
-
-/// darklua takes the first matching loader pattern, and a Luau table has no order, so the
-/// map spelling would leave hash order deciding which one wins.
-fn ordered_loaders(manifest: &Manifest) -> Result<(), Diagnostic> {
-    let declared = manifest
-        .templates
-        .iter()
-        .map(|(name, profile)| ("templates", name, profile))
-        .chain(
-            manifest
-                .profiles
-                .iter()
-                .map(|(name, profile)| ("profiles", name, profile)),
-        );
-
-    for (map, name, profile) in declared {
-        if matches!(&profile.loaders, Some(Loaders::Map(map)) if !map.is_empty()) {
-            return Err(unordered(Location::new(map, name).field("loaders")));
-        }
-
-        for (axis, values) in &profile.axes {
-            let unordered_overlay = values.values().into_iter().any(|value| {
-                values
-                    .overlay(value)
-                    .is_some_and(|overlay| {
-                        matches!(&overlay.loaders, Some(Loaders::Map(map)) if !map.is_empty())
-                    })
-            });
-
-            if unordered_overlay {
-                return Err(unordered(
-                    Location::new(map, name).field("axes").field(axis),
-                ));
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn unordered(at: Location) -> Diagnostic {
-    Diagnostic::new(
-        Code::LoadersUnordered,
-        format!("`{at}` declares `loaders` as a table"),
-    )
-    .at(at)
-    .help("write a list of `{ pattern = ..., use = ... }`, which has an order")
 }

@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 use darklua_core::Configuration;
 use serde_json::{Map, Value};
 
-use crate::manifest::{Ident, Loader, Loaders, Scalar};
+use crate::manifest::{Ident, Loader, Scalar};
 use crate::report::{Code, Diagnostic, Location};
 
 /// darklua substitutes a define by name, so every injection has to precede every rule
@@ -39,7 +39,7 @@ impl Config {
     /// injections go in front of whatever was written.
     pub fn assemble(
         declared: Option<&Map<String, Value>>,
-        loaders: Option<&Loaders>,
+        loaders: Option<&[Loader]>,
         defines: &BTreeMap<Ident, Scalar>,
         at: &Location,
     ) -> Result<Self, Diagnostic> {
@@ -65,7 +65,7 @@ impl Config {
 
         let config = Self {
             rules,
-            loaders: flatten(loaders),
+            loaders: loaders.unwrap_or_default().to_vec(),
             rest,
         };
 
@@ -204,21 +204,4 @@ fn defaults() -> Vec<Value> {
                 .collect()
         })
         .clone()
-}
-
-/// Both spellings normalise to one ordered list. A map is meaningful in a data format,
-/// which writes its keys in the order they appear. A Luau table is rejected earlier, by
-/// [`crate::manifest::format`], because it has no order to preserve.
-fn flatten(loaders: Option<&Loaders>) -> Vec<Loader> {
-    match loaders {
-        None => Vec::new(),
-        Some(Loaders::List(list)) => list.clone(),
-        Some(Loaders::Map(map)) => map
-            .iter()
-            .map(|(pattern, loader)| Loader {
-                pattern: pattern.clone(),
-                loader: loader.as_str().unwrap_or_default().to_owned(),
-            })
-            .collect(),
-    }
 }

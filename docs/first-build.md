@@ -1,59 +1,51 @@
 ---
+title: Your first build
 description: From an empty project to two artifacts and a cache that holds.
-icon: rocket-launch
+icon: lucide/rocket
 ---
 
 # Your first build
 
-{% stepper %}
-{% step %}
-### Scaffold
+1.  **Scaffold.**
 
-```sh
-pcmp init
-```
+    ```sh
+    pcmp init
+    ```
 
-Writes `pcmp.json5` beside your `src/`, and nothing else. Open it, because everything below is a walk through what it says.
-{% endstep %}
+    Writes `pcmp.json5` beside your `src/`, and nothing else. Open it, because everything below is a walk through what it says.
 
-{% step %}
-### Build
+2.  **Build.**
 
-```sh
-pcmp build --var version=v1.0.0
-```
+    ```console
+    $ pcmp build --var version=v1.0.0
+    plan  9b35cd36a0d9
 
-```
-plan  9b35cd36a0d9
+      built   dev      dist/dev/app.luau
+      built   release  dist/release/app.luau
 
-  built   dev      dist/dev/app.luau      12 ms
-  built   release  dist/release/app.luau  14 ms
+    2 built, 0 cached, 0 failed
+    ```
 
-2 built, 0 cached, 0 failed
-```
-{% endstep %}
+3.  **Build again.**
 
-{% step %}
-### Build again
+    ```console
+    $ pcmp build
+    0 built, 2 cached, 0 failed
+    ```
 
-```
-0 built, 2 cached, 0 failed
-```
+    Nothing changed, so nothing ran. When something does run, ask why.
 
-Nothing changed, so nothing ran. When something does run, ask why.
+    ```console
+    $ pcmp plan --why
+    plan  9b35cd36a0d9
 
-```sh
-pcmp plan --why
-```
+      stale   release  dist/release/app.luau  a source file changed
+      fresh   dev      dist/dev/app.luau
 
-```
-  stale   release  dist/release/app.luau  a source file changed
-  fresh   dev      dist/dev/app.luau
-```
+    1 stale, 1 fresh, 0 failed
+    ```
 
-`plan --why` says what a build would do and does none of it, which is why it reports `stale` and `fresh` rather than `built` and `cached`.
-{% endstep %}
-{% endstepper %}
+    `plan --why` says what a build would do and does none of it, which is why it reports `stale` and `fresh` rather than `built` and `cached`.
 
 ## vars
 
@@ -63,10 +55,13 @@ vars: { name: "app", version: "v0.0.0-dev", retries: 3 }
 
 Each var becomes two things.
 
-| | |
-| --- | --- |
-| `{name}` | a token you can put in a path or a header |
-| `PCMP_NAME` | a constant your source can read |
+`{name}`
+
+:   A token you can put in a path or a header.
+
+`PCMP_NAME`
+
+:   A constant your source can read.
 
 ```lua
 local channel: string = PCMP_VERSION
@@ -110,40 +105,46 @@ end
 
 In `dev` that folds to `if true` and stays. In `release` it folds to `if false`, and `remove_unused_if_branch` deletes the block, so the artifact never ships dead code wrapped in a constant.
 
-{% hint style="warning" %}
-`_G.DEBUG` and `_G["DEBUG"]` work the same way.
+!!! warning "What a define can reach"
 
-`getgenv().DEBUG` does not, because it is a function call and there is nothing to replace at build time.
-{% endhint %}
+    `_G.DEBUG` and `_G["DEBUG"]` work the same way.
+
+    `getgenv().DEBUG` does not, because it is a function call and there is nothing to replace at build time.
 
 Misspell one and `pcmp check` says so, through [`unreachable-define`](diagnostics.md#unreachable-define).
 
-```
+```console
+$ pcmp check
 warning[unreachable-define]: `DEBUGG` appears in no source `release` reads
   at:   profiles.release.define.DEBUGG
+  help: nothing will be substituted, so check the spelling on both sides
+
+0 errors, 1 warning
 ```
 
 ## axes
 
 One profile, many builds.
 
-```json5
+```json5 title="pcmp.json5"
 dist: {
   extends: "base",
-  output: "dist/{target}/{flavour}.luau",
+  output: "dist/{target}/{flavour}.luau", // (1)!
   axes: {
-    flavour: ["min", "dev"],
+    flavour: ["min", "dev"], // (2)!
     target: {
-      roblox: { darklua: { bundle: { require_mode: "path" } } },
+      roblox: { darklua: { bundle: { require_mode: "path" } } }, // (3)!
       lune:   { darklua: { bundle: { require_mode: "luau" } } },
     },
   },
 }
 ```
 
-An axis is a list of values, or a map from a value to settings of its own. The second form is why a target can change anything a profile can, not only a path.
+1.  Every axis is also a var, so its name is available as a `{token}` here and as `PCMP_TARGET` in your source.
+2.  The list form. Two axes of two values give four combinations.
+3.  The map form, where a value carries an overlay that can set any profile field, not only a path.
 
-```
+```console
 $ pcmp plan
 plan  9b35cd36a0d9
 
@@ -155,8 +156,6 @@ plan  9b35cd36a0d9
 4 tasks
 ```
 
-Each axis is also a var, so `{target}` and `PCMP_TARGET` both work.
-
 Build all of them, one of them, or a slice.
 
 ```sh
@@ -165,6 +164,4 @@ pcmp build 'dist[flavour=min,target=roblox]'
 pcmp build dist --axis target=roblox
 ```
 
-{% content-ref url="manifest.md" %}
-[manifest.md](manifest.md)
-{% endcontent-ref %}
+[Manifest reference :octicons-arrow-right-24:](manifest.md){ .md-button .md-button--primary }

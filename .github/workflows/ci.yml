@@ -36,16 +36,23 @@ jobs:
       - run: cargo build --release
 
   docs:
-    name: Generated reference
+    name: Documentation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v7
       - run: cargo build --release
+
       # The catalogue lives in the binary. A committed page that disagrees with it is
       # worse than no page, so regenerating and diffing is the whole check.
       - run: ./target/release/pcmp explain --format markdown > docs/diagnostics.md
       - run: git diff --exit-code docs/diagnostics.md
+
+      # `--strict` turns a broken link or a dead anchor into a failure. Most of those
+      # anchors are the diagnostic codes, so renaming a code without fixing what points at
+      # it fails here rather than shipping.
+      - run: uvx zensical build --strict
 
   behaviour:
     name: Behaviour

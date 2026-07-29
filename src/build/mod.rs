@@ -43,7 +43,7 @@ pub struct TaskReport {
     pub artifacts: Option<Digest>,
     /// Why it rebuilt, which `--why` prints and a cached task does not have.
     pub why: Option<Reason>,
-    /// Deliberately outside `--json` unless `--timings` is given: a report has to be
+    /// Printed only under `--timings`, in either output mode: a report has to be
     /// byte-identical for the same build or it cannot be diffed.
     #[serde(skip)]
     pub millis: u128,
@@ -364,6 +364,9 @@ fn lua_extension(task: &Task) -> Option<&str> {
         .and_then(serde_json::Value::as_str)
 }
 
+/// Split on darklua's own wording, which is the only signal it gives. A reword upstream
+/// would silently reclassify every missing dependency as a generic failure, so this
+/// string is checked against darklua when the `=` pin in `Cargo.toml` moves.
 fn failed(task: &Task, detail: &str) -> Diagnostic {
     // An unstaged file is not a transformation failure. It is a dependency nobody
     // declared, and saying so is the whole point of staging.

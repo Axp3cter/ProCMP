@@ -137,7 +137,7 @@ impl Reader {
             && epoch_of(pinned).map(rfc3339).as_deref() != Some(pinned.as_str())
         {
             return Err(Diagnostic::new(
-                Code::BadName,
+                Code::BadArgument,
                 format!("`{pinned}` is not an RFC 3339 instant"),
             )
             .help("write it as 2026-07-29T00:00:00Z, in UTC and to the second"));

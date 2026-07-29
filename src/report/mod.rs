@@ -2,8 +2,8 @@
 //!
 //! Fatal and accumulating findings are the same thing reported in different phases:
 //! nothing can be collected past a manifest that would not parse, whereas resolution
-//! checks every profile before it gives up. [`Code::recoverable`] carries that
-//! distinction so the type does not have to.
+//! checks every profile before it gives up. [`Code::phase`] carries that distinction so
+//! the type does not have to.
 
 mod code;
 
@@ -71,7 +71,8 @@ pub struct Diagnostic {
     pub at: Option<Location>,
     pub message: String,
     pub help: Option<String>,
-    pub source: Option<Box<dyn Error + Send + Sync>>,
+    /// The operating system's own words, when something outside `pcmp` refused.
+    pub source: Option<String>,
 }
 
 impl Diagnostic {
@@ -112,11 +113,11 @@ impl Diagnostic {
         self
     }
 
-    /// Keeps the underlying error rather than flattening it to a string, so
-    /// `io::ErrorKind` and the chain survive as far as the renderer.
+    /// A `String` rather than a boxed error, because every consumer renders it and none
+    /// inspects it. Keeping the error would buy an `io::ErrorKind` nothing reads.
     #[must_use]
-    pub fn caused_by(mut self, source: impl Error + Send + Sync + 'static) -> Self {
-        self.source = Some(Box::new(source));
+    pub fn caused_by(mut self, source: impl fmt::Display) -> Self {
+        self.source = Some(source.to_string());
         self
     }
 
@@ -125,8 +126,8 @@ impl Diagnostic {
     }
 }
 
-/// One shape for every diagnostic, wherever it is emitted. Hand-written because `source`
-/// is a boxed error rather than data.
+/// One shape for every diagnostic, wherever it is emitted. Hand-written because severity
+/// is derived from the code rather than stored.
 impl serde::Serialize for Diagnostic {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct as _;
@@ -137,7 +138,7 @@ impl serde::Serialize for Diagnostic {
         shape.serialize_field("at", &self.at)?;
         shape.serialize_field("message", &self.message)?;
         shape.serialize_field("help", &self.help)?;
-        shape.serialize_field("source", &self.source.as_ref().map(ToString::to_string))?;
+        shape.serialize_field("source", &self.source)?;
         shape.end()
     }
 }
@@ -148,11 +149,7 @@ impl fmt::Display for Diagnostic {
     }
 }
 
-impl Error for Diagnostic {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source.as_ref().map(|boxed| &**boxed as &dyn Error)
-    }
-}
+impl Error for Diagnostic {}
 
 /// A run's findings, plus whatever it still managed to produce.
 ///

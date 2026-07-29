@@ -1,17 +1,17 @@
 ---
+title: darklua
 description: darklua's own configuration, passed through untouched.
-icon: gears
+icon: lucide/settings
 ---
 
 # darklua
 
 A profile's `darklua` block is darklua's own configuration format, deserialised by darklua. Nothing is translated, so no capability of the linked version is out of reach.
 
-{% code title="pcmp.json5" %}
-```json5
+```json5 title="pcmp.json5"
 darklua: {
   generator: { name: "dense", column_span: 120 },
-  apply_to_files: ["src/**"],
+  apply_to_files: ["src/**"], // (1)!
   skip_files: ["**/*.test.luau"],
   lua_extension: "luau",
 
@@ -22,23 +22,29 @@ darklua: {
 
   rules: [
     "compute_expression",
-    { rule: "convert_require", current: "path", target: "roblox" },
+    { rule: "convert_require", current: "path", target: "roblox" }, // (2)!
   ],
 }
 ```
-{% endcode %}
 
-{% embed url="https://darklua.com/docs/config/" %}
-darklua's configuration reference
-{% endembed %}
+1.  These match each file's path relative to the entry, so `src/**` matches nothing when the entry is already `src/init.luau`. A filter that matches nothing is the usual cause of [`no-output`](diagnostics.md#no-output).
+2.  A rule is a bare name, or an object with a `rule` key and that rule's own settings.
+
+[darklua's configuration reference :octicons-link-external-16:](https://darklua.com/docs/config/)
 
 ## Generators
 
-| | |
-| --- | --- |
-| `retain_lines` | keeps the original line structure, and is darklua's default |
-| `dense` | compact, one long line per statement run |
-| `readable` | reformatted and indented |
+`retain_lines`
+
+:   Keeps the original line structure, and is darklua's default.
+
+`dense`
+
+:   Compact, one long line per statement run.
+
+`readable`
+
+:   Reformatted and indented.
 
 `dense` and `readable` take a `column_span`, either as an object or on their own as a string.
 
@@ -54,9 +60,9 @@ Three spellings, three meanings.
 
 Each `define` becomes an `inject_global_value` rule placed ahead of whatever you wrote, so later rules see the substituted value.
 
-```
+```console
 $ pcmp plan release
-darklua configuration
+darklua
   {
     "bundle": { "require_mode": "luau" },
     "generator": "dense",
@@ -68,9 +74,9 @@ darklua configuration
   }
 ```
 
-{% hint style="success" %}
-That block is a valid `.darklua.json`. Keys come out sorted, so two runs print the same thing.
-{% endhint %}
+!!! success "That block is a valid .darklua.json"
+
+    Keys come out sorted, so two runs print the same thing and a diff of the two says something.
 
 ## Merging
 
@@ -93,19 +99,20 @@ Without `null` a child could never clear an inherited `bundle`.
 
 Two orderings are checked, both of them darklua's own.
 
-| Code | Meaning |
-| --- | --- |
-| `fold-before-inject` | `compute_expression` scheduled before `inject_global_value` |
-| `branch-before-fold` | `remove_unused_if_branch` scheduled before `compute_expression` |
+[`fold-before-inject`](diagnostics.md#fold-before-inject)
+
+:   `compute_expression` scheduled before `inject_global_value`. Folding cannot see a value substituted after it, so the define does nothing.
+
+[`branch-before-fold`](diagnostics.md#branch-before-fold)
+
+:   `remove_unused_if_branch` scheduled before `compute_expression`. A branch is only removable once its condition has folded to a constant, so the branch survives.
 
 Nothing beyond those, because a lint stricter than the tool it lints for would reject working manifests.
 
-{% hint style="info" %}
-**Empty tables in a Luau manifest**
+!!! info "Empty tables in a Luau manifest"
 
-An empty Luau table is both an empty list and an empty map, and Luau has no syntax to say which.
+    An empty Luau table is both an empty list and an empty map, and Luau has no syntax to say which.
 
-`pcmp` reads `{}` as an empty list at the keys darklua treats as lists, which are `rules`, `apply_to_files`, `skip_files`, `excludes` and `globals`. Everywhere else it stays a map, so `aliases = {}` still means no aliases.
+    `pcmp` reads `{}` as an empty list at the keys darklua treats as lists, which are `rules`, `apply_to_files`, `skip_files`, `excludes` and `globals`. Everywhere else it stays a map, so `aliases = {}` still means no aliases.
 
-In a data format the question does not arise, because you write `[]` or `{}` and mean it.
-{% endhint %}
+    In a data format the question does not arise, because you write `[]` or `{}` and mean it.

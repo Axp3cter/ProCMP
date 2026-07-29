@@ -55,7 +55,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
-    /// Include durations, which `--json` omits so a report can be diffed.
+    /// Add a duration to each row. Left out by default so a report can be diffed.
     #[arg(long, global = true)]
     timings: bool,
 
@@ -149,6 +149,31 @@ enum Prose {
     Markdown,
 }
 
+/// Whatever ended the run.
+///
+/// A `Vec`, because resolution reports every bad profile at once. The `From<Diagnostic>`
+/// impl is what lets `?` carry a single finding and a whole resolution failure along the
+/// same path, so neither has to be printed before the run is over.
+#[derive(Debug)]
+pub struct Failure(Vec<Diagnostic>);
+
+impl From<Diagnostic> for Failure {
+    fn from(diagnostic: Diagnostic) -> Self {
+        Self(vec![diagnostic])
+    }
+}
+
+/// Prints what ended the run and says what to exit with. The one place either happens.
+pub fn fail(cli: &Cli, failure: &Failure) -> Exit {
+    render::failures(&failure.0, cli.json);
+
+    // Sorted worst first by `report::sort`, so the first is the one that decides.
+    failure
+        .0
+        .first()
+        .map_or(Exit::Config, |first| first.code.exit())
+}
+
 /// A manifest found, loaded and resolved. Every command except `schema`, `init` and
 /// `explain` opens one, and each says so by asking for it.
 struct Project {
@@ -163,7 +188,7 @@ struct Project {
 }
 
 impl Project {
-    fn open(cli: &Cli, cwd: &AbsPath, frozen: bool) -> Result<Self, Diagnostic> {
+    fn open(cli: &Cli, cwd: &AbsPath, frozen: bool) -> Result<Self, Failure> {
         let overrides = overrides(cli)?;
 
         let mut reader = Reader::new(select::pairs(&cli.env)?, cli.now.clone())?;
@@ -194,13 +219,11 @@ impl Project {
             None => loaded.root.join(build::CACHE_DIR)?,
         };
 
+        // Every finding travels out rather than being printed here, so one place decides
+        // how a failure is rendered and `--json` means the same thing on every path.
         let outcome = plan::resolve(&loaded.manifest, &overrides);
         let Some(plan) = outcome.value else {
-            render::failures(&outcome.diagnostics, cli.json);
-            return Err(Diagnostic::new(
-                Code::Unresolved,
-                format!("`{path}` could not be resolved"),
-            ));
+            return Err(Failure(outcome.diagnostics));
         };
 
         Ok(Self {
@@ -229,7 +252,7 @@ fn overrides(cli: &Cli) -> Result<Overrides, Diagnostic> {
     })
 }
 
-pub fn run(cli: &Cli) -> Result<Exit, Diagnostic> {
+pub fn run(cli: &Cli) -> Result<Exit, Failure> {
     let cwd = AbsPath::cwd()?;
 
     match cli.command.as_ref().unwrap_or(&Command::Build {
@@ -297,19 +320,20 @@ pub fn run(cli: &Cli) -> Result<Exit, Diagnostic> {
         Command::Watch { tasks, axis } => {
             let project = Project::open(cli, &cwd, false)?;
             let selection = select::select(&project.plan, tasks, &select::pairs(axis)?)?;
-            build::watch::run(
+            Ok(build::watch::run(
                 &project.root,
                 &project.cache,
                 &project.manifest_path,
                 &project.plan,
                 &selection,
                 cli.json,
-            )
+                cli.timings,
+            )?)
         }
     }
 }
 
-fn plan(cli: &Cli, cwd: &AbsPath, task: Option<&str>, why: bool) -> Result<Exit, Diagnostic> {
+fn plan(cli: &Cli, cwd: &AbsPath, task: Option<&str>, why: bool) -> Result<Exit, Failure> {
     let project = Project::open(cli, cwd, false)?;
 
     match task {
@@ -346,7 +370,7 @@ fn build(
     no_cache: bool,
     lock: bool,
     frozen: bool,
-) -> Result<Exit, Diagnostic> {
+) -> Result<Exit, Failure> {
     let project = Project::open(cli, cwd, frozen)?;
     let selection = select::select(&project.plan, tasks, &select::pairs(axis)?)?;
 
@@ -358,7 +382,7 @@ fn build(
 
     render::heading(&project.plan, cli.json);
     let report = engine.run(&project.plan, &selection);
-    render::build(&report, cli.json, cli.timings || !cli.json, false);
+    render::build(&report, cli.json, cli.timings, false);
 
     if !report.succeeded() {
         return Ok(Exit::Build);
@@ -412,7 +436,7 @@ fn sources(project: &Project) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-fn explain(code: Option<&str>, format: Prose) -> Result<Exit, Diagnostic> {
+fn explain(code: Option<&str>, format: Prose) -> Result<Exit, Failure> {
     if format == Prose::Markdown {
         render::line(report::reference());
         return Ok(Exit::Success);
@@ -426,8 +450,8 @@ fn explain(code: Option<&str>, format: Prose) -> Result<Exit, Diagnostic> {
     };
 
     let known = Code::parse(code).ok_or_else(|| {
-        Diagnostic::new(Code::NoSuchTask, format!("no diagnostic code `{code}`"))
-            .help("run `pcmp explain` for the list")
+        Diagnostic::new(Code::BadArgument, format!("no diagnostic code `{code}`"))
+            .help("run `pcmp explain` with no argument for the list")
     })?;
 
     render::line(format!("{}\n", known.slug()));
@@ -435,7 +459,7 @@ fn explain(code: Option<&str>, format: Prose) -> Result<Exit, Diagnostic> {
     Ok(Exit::Success)
 }
 
-fn write_lock(project: &Project, report: &build::Report) -> Result<(), Diagnostic> {
+fn write_lock(project: &Project, report: &build::Report) -> Result<(), Failure> {
     let tasks = report
         .tasks
         .iter()
@@ -451,13 +475,14 @@ fn write_lock(project: &Project, report: &build::Report) -> Result<(), Diagnosti
         })
         .collect();
 
-    build::record::Lock::new(project.reader.ledger(), tasks).save(&project.root)
+    build::record::Lock::new(project.reader.ledger(), tasks).save(&project.root)?;
+    Ok(())
 }
 
 /// A frozen build has already produced its artifacts, so this is only the comparison.
-fn frozen_verdict(project: &Project, report: &build::Report) -> Result<Exit, Diagnostic> {
+fn frozen_verdict(project: &Project, report: &build::Report) -> Result<Exit, Failure> {
     let Some(lock) = build::record::Lock::load(&project.root) else {
-        return Err(Diagnostic::new(Code::Frozen, "no pcmp.lock to reproduce"));
+        return Err(Diagnostic::new(Code::Frozen, "no pcmp.lock to reproduce").into());
     };
 
     let differing: Vec<&str> = report
