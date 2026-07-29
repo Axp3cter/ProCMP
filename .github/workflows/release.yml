@@ -8,9 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build:
     name: ${{ matrix.target }}
@@ -19,69 +16,53 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-unknown-linux-gnu,  os: ubuntu-latest }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
-          - { target: x86_64-apple-darwin,       os: macos-13 }
-          - { target: aarch64-apple-darwin,      os: macos-latest }
-          - { target: x86_64-pc-windows-msvc,    os: windows-latest }
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  name: linux-x86_64  }
+          - { os: ubuntu-latest,  target: aarch64-unknown-linux-gnu, name: linux-aarch64 }
+          - { os: macos-latest,   target: x86_64-apple-darwin,       name: macos-x86_64  }
+          - { os: macos-latest,   target: aarch64-apple-darwin,      name: macos-aarch64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,    name: windows-x86_64 }
     steps:
       - uses: actions/checkout@v5
-      - run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+      - run: rustup target add ${{ matrix.target }}
+      - uses: taiki-e/install-action@v2
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         with:
-          key: ${{ matrix.target }}
-
-      - run: cargo build --release --target ${{ matrix.target }}
-
-      # Zip everywhere, holding the binary alone at the archive root. Aftman reads zip
-      # only, and when no entry matches the tool name it installs the first one ending
-      # with the platform's executable suffix, which is empty on Unix. A README beside
-      # the binary would be installed as the tool.
+          tool: cross
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            cross build --release --locked --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
       - name: Package
         shell: bash
         run: |
-          name="pcmp-${GITHUB_REF_NAME}-${{ matrix.target }}"
-          mkdir -p dist
-
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/pcmp.exe" dist/
-            (cd dist && 7z a "$name.zip" pcmp.exe > /dev/null && rm pcmp.exe)
-            (cd dist && certutil -hashfile "$name.zip" SHA256 | sed -n 2p | tr -d ' \r' > "$name.zip.sha256")
+          set -eu
+          staging="pcmp-${{ github.ref_name }}-${{ matrix.name }}"
+          mkdir -p "$staging"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "target/${{ matrix.target }}/release/pcmp.exe" "$staging/"
           else
-            cp "target/${{ matrix.target }}/release/pcmp" dist/
-            (cd dist && zip -qj "$name.zip" pcmp && rm pcmp)
-            (cd dist && shasum -a 256 "$name.zip" | cut -d' ' -f1 > "$name.zip.sha256")
+            cp "target/${{ matrix.target }}/release/pcmp" "$staging/"
           fi
-
+          cp README.md LICENSE "$staging/"
+          zip -r "$staging.zip" "$staging"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
-          path: dist/*
-          if-no-files-found: error
+          name: ${{ matrix.name }}
+          path: "*.zip"
 
   publish:
-    name: Publish
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: artifacts
           merge-multiple: true
-
-      - name: Collect checksums
-        run: |
-          cd artifacts
-          for file in *.sha256; do
-            printf '%s  %s\n' "$(cat "$file")" "${file%.sha256}" >> SHA256SUMS
-            rm "$file"
-          done
-          sort -k2 -o SHA256SUMS SHA256SUMS
-
-      # Draft, because a release whose assets are still uploading is one someone can
-      # download half of.
       - uses: softprops/action-gh-release@v2
         with:
-          draft: true
+          files: "*.zip"
           generate_release_notes: true
-          files: artifacts/*

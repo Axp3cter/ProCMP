@@ -6,6 +6,6 @@
 ## Reference
 
 * [Manifest](manifest.md)
+* [Determinism](determinism.md)
 * [darklua](darklua.md)
 * [CLI](cli.md)
-* [Diagnostics](diagnostics.md)

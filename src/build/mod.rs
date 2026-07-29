@@ -1,67 +1,77 @@
-//! Execution: [`Graph`] in, artifacts out.
+//! Execution: a [`Plan`] in, artifacts out.
+//!
+//! A task is skipped only when all four digests match its record — configuration, shape,
+//! reads and artifacts. The fourth is the one that notices an artifact edited by hand,
+//! which an inputs-only stamp never could.
 
-mod scope;
+pub mod commit;
+pub mod inputs;
+pub mod record;
+pub mod stage;
 pub mod watch;
 
-pub use scope::Scope;
-
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 use std::time::Instant;
 
-use darklua_core::{Configuration, Options, Resources};
-use rayon::prelude::*;
-use serde_json::{Map, Value};
+use darklua_core::Options;
 
-use crate::digest::{self, Digest, Hasher};
-use crate::error::{Error, Result};
-use crate::manifest::Rule;
-use crate::path::AbsPath;
-use crate::plan::{Graph, Task};
+use crate::plan::{Plan, Task, TaskId};
+use crate::report::{Code, Diagnostic};
+use crate::vfs::{self, AbsPath, Digest, RelPath};
+
+use inputs::Scope;
+use record::{Reason, Record};
 
 /// Where build state lives when `--cache-dir` is not given.
 pub const CACHE_DIR: &str = ".pcmp";
 
-/// Extensions a header may be written to. A directory output can hold anything a `copy`
-/// loader passed through.
-const HEADABLE: &[&str] = &["luau", "lua"];
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "lowercase", tag = "status")]
-pub enum Outcome {
-    Built { digest: String },
-    Cached { digest: String },
-    Failed { reason: String },
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Status {
+    Built,
+    Cached,
+    Failed,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct TaskReport {
-    pub task: String,
-    pub output: String,
-    pub outcome: Outcome,
+    pub task: TaskId,
+    pub output: RelPath,
+    pub status: Status,
+    /// Absent when the task failed, which is the only time there is nothing to name.
+    pub artifacts: Option<Digest>,
+    /// Why it rebuilt, which `--why` prints and a cached task does not have.
+    pub why: Option<Reason>,
+    /// Deliberately outside `--json` unless `--timings` is given: a report has to be
+    /// byte-identical for the same build or it cannot be diffed.
+    #[serde(skip)]
     pub millis: u128,
+    /// Why it failed, in the same shape every other diagnostic uses.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
 pub struct Report {
     pub tasks: Vec<TaskReport>,
 }
 
 impl Report {
     pub fn succeeded(&self) -> bool {
-        !self
-            .tasks
-            .iter()
-            .any(|t| matches!(t.outcome, Outcome::Failed { .. }))
+        !self.tasks.iter().any(|task| task.status == Status::Failed)
     }
 
-    /// Built, cached and failed.
+    /// Built, cached, failed.
     pub fn counts(&self) -> (usize, usize, usize) {
         self.tasks
             .iter()
-            .fold((0, 0, 0), |(b, c, f), task| match task.outcome {
-                Outcome::Built { .. } => (b + 1, c, f),
-                Outcome::Cached { .. } => (b, c + 1, f),
-                Outcome::Failed { .. } => (b, c, f + 1),
+            .fold((0, 0, 0), |(built, cached, failed), task| {
+                match task.status {
+                    Status::Built => (built + 1, cached, failed),
+                    Status::Cached => (built, cached + 1, failed),
+                    Status::Failed => (built, cached, failed + 1),
+                }
             })
     }
 }
@@ -70,247 +80,302 @@ impl Report {
 pub struct Engine {
     root: AbsPath,
     cache: AbsPath,
-    use_cache: bool,
+    /// `--frozen` and `--no-cache` both turn this off.
+    cached: bool,
+}
+
+/// Whether a run acts on what it decides, or only reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Work {
+    Do,
+    Skip,
 }
 
 impl Engine {
-    pub fn new(root: AbsPath, cache: AbsPath) -> Self {
+    pub fn new(root: AbsPath, cache: AbsPath, cached: bool) -> Self {
         Self {
             root,
             cache,
-            use_cache: true,
+            cached,
         }
     }
 
-    /// Disabled is what `verify` needs.
-    #[must_use]
-    pub fn cached(mut self, enabled: bool) -> Self {
-        self.use_cache = enabled;
-        self
+    /// Reports what each task would do without doing any of it, for `plan --why`.
+    ///
+    /// Every digest is still computed; only the work is skipped.
+    pub fn inspect(&self, plan: &Plan, selection: &Plan) -> Report {
+        self.execute(plan, selection, Work::Skip)
     }
 
-    /// Failures land in the report rather than returning early. Only whole-run problems
-    /// return an error.
-    pub fn run(&self, graph: &Graph) -> Result<Report> {
-        // Before any work: two tasks writing one path would race.
-        let mut claimed: BTreeMap<&str, &str> = BTreeMap::new();
-        for task in &graph.tasks {
-            if let Some(first) = claimed.insert(task.output.as_str(), &task.id) {
-                return Err(Error::OutputCollision(
-                    first.to_owned(),
-                    task.id.clone(),
-                    task.output.to_string(),
-                ));
-            }
-        }
+    /// Failures land in the report rather than returning early, so one run names every
+    /// task that went wrong.
+    pub fn run(&self, plan: &Plan, selection: &Plan) -> Report {
+        self.execute(plan, selection, Work::Do)
+    }
 
-        let sources = Scope::of(graph, &self.cache)?.fingerprint()?;
+    fn execute(&self, plan: &Plan, selection: &Plan, work: Work) -> Report {
+        // `None` when the cache lives outside the manifest, in which case it is already
+        // outside every root and needs no excluding.
+        let cache = self.cache.relative_to(&self.root);
 
-        let mut tasks: Vec<TaskReport> = graph
-            .tasks
-            .par_iter()
-            .map(|task| {
-                let started = Instant::now();
-                let key = self.key(task, sources);
+        // Shape is a pure function of a scope, and a matrix's combinations usually share
+        // one, so it is computed per distinct scope rather than per task.
+        let shapes: Mutex<BTreeMap<Scope, Digest>> = Mutex::new(BTreeMap::new());
 
-                TaskReport {
-                    task: task.id.clone(),
-                    output: task.output.relative_to(&self.root),
-                    outcome: self.one(task, key).unwrap_or_else(|error| Outcome::Failed {
-                        reason: error.to_string(),
-                    }),
-                    millis: started.elapsed().as_millis(),
-                }
-            })
-            .collect();
+        let mut tasks: Vec<TaskReport> = std::thread::scope(|threads| {
+            let handles: Vec<_> = selection
+                .tasks
+                .iter()
+                .map(|task| {
+                    let shapes = &shapes;
+                    let cache = cache.as_ref();
+                    threads.spawn(move || self.one(task, plan, cache, shapes, work))
+                })
+                .collect();
+
+            handles
+                .into_iter()
+                .filter_map(|handle| handle.join().ok())
+                .collect()
+        });
 
         tasks.sort_by(|a, b| a.task.cmp(&b.task));
-        Ok(Report { tasks })
+        Report { tasks }
     }
 
-    /// darklua's version goes in: one manifest can produce different bytes against a
-    /// different one.
-    fn key(&self, task: &Task, sources: Digest) -> Digest {
-        let mut h = Hasher::new();
-        h.field("config", task.digest().bytes())
-            .field("sources", sources.bytes())
-            .field("darklua", crate::DARKLUA_VERSION);
-        h.finish()
+    fn one(
+        &self,
+        task: &Task,
+        plan: &Plan,
+        cache: Option<&RelPath>,
+        shapes: &Mutex<BTreeMap<Scope, Digest>>,
+        work: Work,
+    ) -> TaskReport {
+        let started = Instant::now();
+        let scope = Scope::of(task, plan, cache);
+
+        let outcome = self.attempt(task, &scope, shapes, work);
+        let (status, artifacts, why, diagnostics) = match outcome {
+            Ok(Skipped { artifacts }) => (Status::Cached, Some(artifacts), None, Vec::new()),
+            Ok(Rebuilt { artifacts, why }) => {
+                (Status::Built, Some(artifacts), Some(why), Vec::new())
+            }
+            Err(diagnostic) => (Status::Failed, None, None, vec![diagnostic]),
+        };
+
+        TaskReport {
+            task: task.id.clone(),
+            output: task.output.clone(),
+            status,
+            artifacts,
+            why,
+            millis: started.elapsed().as_millis(),
+            diagnostics,
+        }
     }
 
-    fn one(&self, task: &Task, key: Digest) -> Result<Outcome> {
-        if !task.entry.exists() {
-            return Err(Error::MissingEntry(
-                task.id.clone(),
-                task.entry.relative_to(&self.root),
-            ));
+    fn attempt(
+        &self,
+        task: &Task,
+        scope: &Scope,
+        shapes: &Mutex<BTreeMap<Scope, Digest>>,
+        work: Work,
+    ) -> Result<Outcome, Diagnostic> {
+        let record = Record::load(&self.cache, task.id.as_str());
+        let shape = self.shape(scope, shapes)?;
+        let plan_digest = task.digest();
+
+        let recorded_reads = record.as_ref().map(|record| record.read_set.as_slice());
+        let (reads, _) = inputs::reads(scope, &self.root, recorded_reads)?;
+
+        let previous: &[RelPath] = record.as_ref().map_or(&[], |record| &record.outputs);
+        let on_disk = commit::fingerprint(&commit::current(&self.root, previous));
+
+        let stale = Record::stale(record.as_ref(), plan_digest, shape, reads, on_disk);
+
+        if self.cached && stale.is_none() {
+            return Ok(Skipped { artifacts: on_disk });
         }
 
-        // A directory output that exists but holds nothing is not a previous build.
-        if self.use_cache
-            && artifacts(&task.output).is_ok_and(|found| !found.is_empty())
-            && self.fresh(task, key)
-        {
-            return Ok(Outcome::Cached {
-                digest: key.short(),
+        let why = stale.unwrap_or(Reason::NoRecord);
+        if work == Work::Skip {
+            return Ok(Rebuilt {
+                artifacts: on_disk,
+                why,
             });
         }
 
-        // A file output needs its parent. A directory output darklua creates itself.
-        if task.entry.is_file()
-            && let Some(parent) = task.output.parent()
+        let artifacts = self.build(task, scope, plan_digest, shape, previous)?;
+        Ok(Rebuilt { artifacts, why })
+    }
+
+    fn shape(
+        &self,
+        scope: &Scope,
+        shapes: &Mutex<BTreeMap<Scope, Digest>>,
+    ) -> Result<Digest, Diagnostic> {
+        if let Ok(cached) = shapes.lock()
+            && let Some(digest) = cached.get(scope)
         {
-            std::fs::create_dir_all(parent.as_std())
-                .map_err(|e| Error::Write(parent.to_string(), e.to_string()))?;
+            return Ok(*digest);
         }
 
-        // `process` reports per-file failures inside the returned tree rather than as
-        // an `Err`, so a build that produced nothing would look successful.
-        let worked = darklua_core::process(
-            &Resources::from_file_system(),
-            Options::new(task.entry.as_std())
-                .with_output(task.output.as_std())
-                .with_configuration(configuration(task)?),
-        )
-        .map_err(|e| Error::Process(task.id.clone(), e.to_string()))?;
+        let digest = inputs::shape(scope, &self.root)?;
 
-        let failures = worked.collect_errors();
-        if !failures.is_empty() {
-            let detail = failures
+        if let Ok(mut cached) = shapes.lock() {
+            cached.insert(scope.clone(), digest);
+        }
+
+        Ok(digest)
+    }
+
+    fn build(
+        &self,
+        task: &Task,
+        scope: &Scope,
+        plan: Digest,
+        shape: Digest,
+        previous: &[RelPath],
+    ) -> Result<Digest, Diagnostic> {
+        let entry = self.root.join(task.entry.as_str())?;
+        let output = self.root.join(task.output.as_str())?;
+
+        if !vfs::exists(&entry) {
+            return Err(Diagnostic::new(
+                Code::MissingEntryFile,
+                format!("`{}` does not exist", task.entry),
+            )
+            .help("the path resolves against the manifest's directory"));
+        }
+
+        // A rebuild stages everything in scope rather than the recorded read set: the set
+        // may have grown, and a file that is not staged cannot be opened.
+        let (_, contents) = inputs::reads(scope, &self.root, None)?;
+        let staged: Vec<RelPath> = contents.keys().cloned().collect();
+        let resources = stage::inputs(&self.root, &contents)?;
+
+        let worked = darklua_core::process(
+            &resources,
+            Options::new(entry.as_std())
+                .with_output(output.as_std())
+                .with_configuration(task.config.build(task.id.as_str())?),
+        )
+        .map_err(|error| failed(task, &error.to_string()))?;
+
+        // `process` reports per-file failures inside the returned tree rather than as an
+        // `Err`, so a build that produced nothing would otherwise look successful.
+        let errors = worked.collect_errors();
+        if !errors.is_empty() {
+            let detail = errors
                 .iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join("\n");
-            return Err(Error::Process(task.id.clone(), detail));
+            return Err(failed(task, &detail));
         }
 
-        if !task.output.exists() {
-            return Err(Error::NoOutput(
-                task.id.clone(),
-                task.output.relative_to(&self.root),
+        let mut artifacts = stage::outputs(&resources, &self.root, &output);
+        if artifacts.is_empty() {
+            return Err(Diagnostic::new(
+                Code::NoOutput,
+                format!("`{}` reported no failure but wrote nothing", task.id),
+            )
+            .help(
+                "a file filter that matches nothing is the usual cause: `apply_to_files` and \
+                 `skip_files` match each file's path relative to the entry",
             ));
         }
 
-        self.prepend_header(task)?;
-        self.record(task, key)?;
-        Ok(Outcome::Built {
-            digest: key.short(),
-        })
-    }
+        commit::compose(
+            &mut artifacts,
+            &task.header,
+            &commit::headable(lua_extension(task)),
+        );
 
-    fn prepend_header(&self, task: &Task) -> Result<()> {
-        if task.header.is_empty() {
-            return Ok(());
-        }
+        let digest = commit::fingerprint(&artifacts);
+        commit::write(&self.root, &artifacts, previous)?;
 
-        let mut banner = task.header.join("\n");
-        banner.push('\n');
+        let read_set = read_set(&worked, &self.root, &task.entry, &staged);
+        let outputs: Vec<RelPath> = artifacts.keys().cloned().collect();
 
-        for artifact in artifacts(&task.output)? {
-            if !artifact.extension().is_some_and(|e| HEADABLE.contains(&e)) {
-                continue;
-            }
+        // Over the set darklua read, not the set that was staged. Those differ on a cold
+        // build, and recording the wrong one is a cache that never hits.
+        let read: BTreeMap<RelPath, Vec<u8>> = contents
+            .into_iter()
+            .filter(|(path, _)| read_set.contains(path))
+            .collect();
 
-            let path = artifact.as_std();
-            let body = std::fs::read_to_string(path)
-                .map_err(|e| Error::Read(artifact.to_string(), e.to_string()))?;
+        Record::new(
+            plan,
+            shape,
+            inputs::fingerprint(&read),
+            digest,
+            read_set,
+            outputs,
+        )
+        .save(&self.cache, task.id.as_str())?;
 
-            std::fs::write(path, format!("{banner}{body}"))
-                .map_err(|e| Error::Write(artifact.to_string(), e.to_string()))?;
-        }
-
-        Ok(())
-    }
-
-    /// Named by hash: a matrix identifier holds `[`, `]`, `=` and `,`.
-    fn stamp(&self, task: &Task) -> Result<AbsPath> {
-        self.cache
-            .join(format!("{}.stamp", digest::of(&task.id).hex()))
-    }
-
-    /// A missing or unreadable stamp reads as stale.
-    fn fresh(&self, task: &Task, key: Digest) -> bool {
-        let Ok(path) = self.stamp(task) else {
-            return false;
-        };
-        matches!(std::fs::read_to_string(path.as_std()), Ok(v) if v.trim() == key.hex())
-    }
-
-    fn record(&self, task: &Task, key: Digest) -> Result<()> {
-        std::fs::create_dir_all(self.cache.as_std())
-            .map_err(|e| Error::Write(self.cache.to_string(), e.to_string()))?;
-        let path = self.stamp(task)?;
-        std::fs::write(path.as_std(), key.hex())
-            .map_err(|e| Error::Write(path.to_string(), e.to_string()))
+        Ok(digest)
     }
 }
 
-/// Every file an output covers: the file itself, or the tree beneath a directory.
-pub fn artifacts(output: &AbsPath) -> Result<Vec<AbsPath>> {
-    if output.is_file() {
-        return Ok(vec![output.clone()]);
-    }
+enum Outcome {
+    Skipped { artifacts: Digest },
+    Rebuilt { artifacts: Digest, why: Reason },
+}
 
-    let mut found = Vec::new();
-    let mut stack = vec![output.clone()];
+use Outcome::{Rebuilt, Skipped};
 
-    while let Some(dir) = stack.pop() {
-        let read = match std::fs::read_dir(dir.as_std()) {
-            Ok(read) => read,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(Error::Read(dir.to_string(), e.to_string())),
-        };
+/// What darklua opened: the modules it followed, plus the entry tree it walked.
+fn read_set(
+    worked: &darklua_core::WorkerTree,
+    root: &AbsPath,
+    entry: &RelPath,
+    staged: &[RelPath],
+) -> Vec<RelPath> {
+    let mut found: Vec<RelPath> = worked
+        .iter_external_dependencies()
+        .filter_map(|path| path.to_str())
+        .filter_map(|path| AbsPath::new(path).ok())
+        .filter_map(|path| path.relative_to(root))
+        .collect();
 
-        for entry in read {
-            let entry = entry.map_err(|e| Error::Read(dir.to_string(), e.to_string()))?;
-            let Ok(path) = dir.join(entry.file_name().to_string_lossy().as_ref()) else {
-                continue;
-            };
-
-            match entry.file_type() {
-                Ok(kind) if kind.is_dir() => stack.push(path),
-                Ok(kind) if kind.is_file() => found.push(path),
-                _ => {}
-            }
-        }
-    }
+    // A directory entry is processed file by file rather than followed, so those are not
+    // external dependencies — but they are certainly reads.
+    found.extend(
+        staged
+            .iter()
+            .filter(|path| path.starts_with(entry))
+            .cloned(),
+    );
 
     found.sort();
-    Ok(found)
+    found.dedup();
+    found
 }
 
-/// The manifest's own `darklua` block, with `rules` and `loaders` written over it.
-pub fn config_json(task: &Task) -> Value {
-    let mut config = task.darklua.clone();
-
-    // Omitted rather than emitted empty: darklua reads a missing `rules` as "use the
-    // defaults", which is not "run nothing".
-    if let Some(rules) = &task.rules {
-        config.insert(
-            "rules".into(),
-            Value::Array(rules.iter().map(Rule::json).collect()),
-        );
-    }
-
-    if let Some(loaders) = &task.loaders {
-        let map: Map<String, Value> = loaders
-            .iter()
-            .map(|l| (l.pattern.clone(), l.loader.clone().into()))
-            .collect();
-        config.insert("loaders".into(), Value::Object(map));
-    }
-
-    Value::Object(config)
+/// darklua's own `lua_extension`, so the header applies to whatever it emits as source
+/// rather than to a list this crate keeps of its own.
+fn lua_extension(task: &Task) -> Option<&str> {
+    task.config
+        .rest
+        .get("lua_extension")
+        .and_then(serde_json::Value::as_str)
 }
 
-/// On rejection the error carries the emitted JSON.
-fn configuration(task: &Task) -> Result<Configuration> {
-    let json = config_json(task);
-    serde_json::from_value(json.clone()).map_err(|e| {
-        Error::DarkluaConfig(
-            task.id.clone(),
-            e.to_string(),
-            serde_json::to_string_pretty(&json).unwrap_or_default(),
-        )
-    })
+fn failed(task: &Task, detail: &str) -> Diagnostic {
+    // An unstaged file is not a transformation failure; it is a dependency nobody
+    // declared, and saying so is the whole point of staging.
+    let code = if detail.contains("unable to find") {
+        Code::UndeclaredInput
+    } else {
+        Code::ProcessFailed
+    };
+
+    let diagnostic = Diagnostic::new(code, format!("`{}` failed", task.id)).help(detail.to_owned());
+
+    match code {
+        Code::UndeclaredInput => diagnostic.help("add the directory that holds it to `sources`"),
+        _ => diagnostic,
+    }
 }

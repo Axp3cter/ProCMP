@@ -10,57 +10,41 @@
 
 ---
 
-Links in [darklua](https://darklua.com) as a library.
-
-## Install
-
-```sh
-rokit add Proton-Utilities/ProCMP pcmp
-aftman add Proton-Utilities/ProCMP pcmp
-cargo install --locked --git https://github.com/Proton-Utilities/ProCMP
-```
-
-## Use
+A minified release, a readable debug build, a Roblox variant and a Lune variant, described
+in one file and built by one command. [darklua](https://darklua.com) is linked in as a
+library, so `pcmp` is a single binary with nothing to install alongside it.
 
 ```sh
+rokit add Proton-Utilities/ProCMP
 pcmp init
+pcmp build
 ```
 
-```json5
-// pcmp.json5
-{
-  $schema: "./pcmp.schema.json",
+## Reproducible, including the parts that change
 
-  vars: { name: "app", version: "v0.0.0-dev" },
-
-  profiles: {
-    release: {
-      entry: "src/init.luau",
-      output: "dist/{name}.luau",
-      define: { DEBUG: false },
-      darklua: {
-        generator: "dense",
-        bundle: { require_mode: "luau" },
-        rules: ["compute_expression", "remove_unused_if_branch"],
-      },
-    },
-  },
-}
-```
+A build is a function of what the manifest declares. Everything it takes from outside —
+an environment variable, a file, the clock — is recorded, so a version stamp or a build
+timestamp does not cost you reproducibility:
 
 ```sh
-pcmp plan     # what would be built
-pcmp check    # lint the manifest and the plan
-pcmp build    # build it
-pcmp watch    # rebuild on every change
-pcmp verify   # prove the output is reproducible
+pcmp build --lock      # build, and write down what it read
+pcmp build --frozen    # build again from that record, and prove it matches
 ```
 
-JSON, JSONC, TOML and Luau manifests resolve to the same plan.
+`--frozen` reproduces a build exactly, timestamp included, because the timestamp is one of
+the inputs the lock pins. `pcmp check` says so when a manifest reads something and no lock
+records it.
+
+## Commands
+
+`build` · `plan` · `check` · `watch` · `init` · `schema` · `explain`
+
+`pcmp help` describes every flag, and `pcmp explain <CODE>` describes any diagnostic you
+see. Neither is repeated here, so neither can go stale.
 
 ## Documentation
 
-[docs/](https://github.com/Proton-Utilities/ProCMP/tree/main/docs)
+[docs/](docs/) — a tutorial, the manifest reference, and how determinism works.
 
 ## License
 

@@ -1,33 +1,34 @@
 //! Argument parsing and dispatch.
+//!
+//! `clap` already prints the flag reference and `pcmp explain` already prints the
+//! diagnostic reference, so neither is restated in the documentation and neither can go
+//! stale.
 
-mod menu;
-mod render;
+pub mod render;
+pub mod select;
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use procmp::diag::{self, Diag, Severity};
-use procmp::error::{Error, ExitCode, Result};
-use procmp::{
-    AbsPath, Engine, Graph, Manifest, Overrides, Scope, build, check, init, manifest, plan, schema,
-};
 
-use render::outln;
+use crate::build::{self, Engine};
+use crate::manifest::ledger::Reader;
+use crate::manifest::{Manifest, Scalar, format, scaffold, schema};
+use crate::plan::{self, Overrides, Plan};
+use crate::report::{self, Code, Diagnostic, Exit, Severity};
+use crate::vfs::AbsPath;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "pcmp",
     version,
-    long_version = format!(
-        "{}\ndarklua {}",
-        env!("CARGO_PKG_VERSION"),
-        procmp::DARKLUA_VERSION
-    ),
+    long_version = concat!(env!("CARGO_PKG_VERSION"), "\ndarklua ", "0.19.0"),
     about = "Multi-target build composition for Luau projects"
 )]
 pub struct Cli {
     /// Manifest to use. Discovered from the working directory upwards otherwise.
-    #[arg(long, short, global = true)]
+    #[arg(long, short, global = true, value_name = "PATH")]
     manifest: Option<String>,
 
     /// Where build state is kept. Defaults to `.pcmp/` beside the manifest.
@@ -46,29 +47,48 @@ pub struct Cli {
     #[arg(long = "define", short = 'D', global = true, value_name = "KEY=VALUE")]
     define: Vec<String>,
 
-    /// Emit machine-readable JSON.
+    /// Pin `pcmp.now()`. `SOURCE_DATE_EPOCH` is honoured when this is absent.
+    #[arg(long, global = true, value_name = "RFC3339")]
+    now: Option<String>,
+
+    /// Machine-readable output, byte-stable for a given build.
     #[arg(long, global = true)]
     json: bool,
 
+    /// Include durations, which `--json` omits so a report can be diffed.
+    #[arg(long, global = true)]
+    timings: bool,
+
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Resolve the manifest and print the plan without running it.
-    Plan,
-
     /// Build every task, or a selection.
     Build {
-        /// Task or profile names. `*` is accepted. All when omitted.
+        /// Profile names or exact task identifiers. All when omitted.
         tasks: Vec<String>,
-        /// Choose from a menu instead. Needs a terminal.
-        #[arg(long, conflicts_with = "tasks")]
-        pick: bool,
+        /// Filter an expansion by coordinate. Repeatable.
+        #[arg(long = "axis", value_name = "KEY=VALUE")]
+        axis: Vec<String>,
         /// Ignore cached state.
         #[arg(long)]
         no_cache: bool,
+        /// Write pcmp.lock, recording what this build read and produced.
+        #[arg(long, conflicts_with = "frozen")]
+        lock: bool,
+        /// Reproduce what pcmp.lock records, and fail if anything differs.
+        #[arg(long)]
+        frozen: bool,
+    },
+
+    /// Resolve and print without building. Naming a task prints its full configuration.
+    Plan {
+        task: Option<String>,
+        /// Say why each task would rebuild.
+        #[arg(long)]
+        why: bool,
     },
 
     /// Lint the manifest and the resolved plan.
@@ -78,13 +98,23 @@ enum Command {
         strict: bool,
     },
 
-    /// Print the darklua configuration a task compiles to.
-    Explain {
-        /// Required unless `--pick` is given.
-        task: Option<String>,
-        /// Choose from a menu instead. Needs a terminal.
-        #[arg(long, conflicts_with = "task")]
-        pick: bool,
+    /// Rebuild whenever an input or the manifest changes.
+    Watch {
+        tasks: Vec<String>,
+        #[arg(long = "axis", value_name = "KEY=VALUE")]
+        axis: Vec<String>,
+    },
+
+    /// Write a starter manifest.
+    Init {
+        /// Defaults to the directory name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Detected from common locations when omitted.
+        #[arg(long)]
+        entry: Option<String>,
+        #[arg(long, value_enum, default_value_t = scaffold::Format::Json5)]
+        format: scaffold::Format,
     },
 
     /// Emit the manifest schema.
@@ -93,34 +123,10 @@ enum Command {
         format: Shape,
     },
 
-    /// Build twice and prove the output is byte-identical.
-    Verify {
-        /// Task or profile names. `*` is accepted. All when omitted.
-        tasks: Vec<String>,
-        /// Choose from a menu instead. Needs a terminal.
-        #[arg(long, conflicts_with = "tasks")]
-        pick: bool,
-    },
-
-    /// Rebuild whenever an input or the manifest changes.
-    Watch {
-        /// Task or profile names. `*` is accepted. All when omitted.
-        tasks: Vec<String>,
-        /// Choose from a menu instead. Needs a terminal.
-        #[arg(long, conflicts_with = "tasks")]
-        pick: bool,
-    },
-
-    /// Write a starter manifest and its schema.
-    Init {
-        /// Defaults to the directory name.
-        #[arg(long)]
-        name: Option<String>,
-        /// Detected from common locations when omitted.
-        #[arg(long)]
-        entry: Option<String>,
-        #[arg(long, value_enum, default_value_t = init::Format::Json5)]
-        format: init::Format,
+    /// Explain a diagnostic code, as printed in `error[missing-output]`.
+    Explain {
+        /// Omit to list every code.
+        code: Option<String>,
     },
 }
 
@@ -130,65 +136,105 @@ enum Shape {
     Luau,
 }
 
-/// A manifest found, loaded and resolved. Every command except `schema` and `init`
-/// opens one, and each says so by asking for it.
+/// A manifest found, loaded and resolved. Every command except `schema`, `init` and
+/// `explain` opens one, and each says so by asking for it.
 struct Project {
-    path: AbsPath,
     root: AbsPath,
+    /// The manifest itself, which is inside the roots but is not a source.
+    manifest_path: AbsPath,
     cache: AbsPath,
     manifest: Manifest,
-    graph: Graph,
-    diags: Vec<Diag>,
-    env: manifest::Env,
-    overrides: Overrides,
+    plan: Plan,
+    diagnostics: Vec<Diagnostic>,
+    reader: Rc<Reader>,
 }
 
 impl Project {
-    fn open(cli: &Cli, cwd: &AbsPath) -> Result<Self> {
-        let env = manifest::Env::parse(&cli.env)?;
-        let overrides = Overrides::parse(&cli.define, &cli.var)?;
+    fn open(cli: &Cli, cwd: &AbsPath, frozen: bool) -> Result<Self, Diagnostic> {
+        let overrides = overrides(cli)?;
 
+        let mut reader = Reader::new(select::pairs(&cli.env)?, cli.now.clone())?;
         let path = match cli.manifest.as_deref() {
             Some(given) => cwd.join(given)?,
-            None => manifest::discover(cwd)?,
+            None => format::discover(cwd)?,
         };
+        let root = path
+            .parent()
+            .ok_or_else(|| Diagnostic::new(Code::NoManifest, format!("`{path}` has no parent")))?;
 
-        let loaded = manifest::load(&path, &env)?;
+        if frozen {
+            let lock = build::record::Lock::load(&root).ok_or_else(|| {
+                Diagnostic::new(Code::Frozen, "no pcmp.lock to reproduce")
+                    .help("run `pcmp build --lock` first")
+            })?;
+            reader = reader.frozen(lock.ledger);
+        }
+
+        let reader = Rc::new(reader);
+        for (name, value) in overrides.vars.iter().chain(&overrides.defines) {
+            reader.note_override(name, &value.text());
+        }
+
+        let loaded = format::load(&path, &reader)?;
         let cache = match cli.cache_dir.as_deref() {
-            Some(dir) => cwd.join(dir)?,
+            Some(given) => cwd.join(given)?,
             None => loaded.root.join(build::CACHE_DIR)?,
         };
 
-        let resolution = plan::resolve(&loaded.manifest, &loaded.root, &overrides);
-        let Some(graph) = resolution.graph else {
-            render::diags(&resolution.diags, cli.json);
-            return Err(Error::Unresolved(path.relative_to(cwd)));
+        let outcome = plan::resolve(&loaded.manifest, &overrides);
+        let Some(plan) = outcome.value else {
+            render::failures(&outcome.diagnostics, cli.json);
+            return Err(Diagnostic::new(
+                Code::Unresolved,
+                format!("`{path}` could not be resolved"),
+            ));
         };
 
         Ok(Self {
-            path,
             root: loaded.root,
+            manifest_path: loaded.path,
             cache,
             manifest: loaded.manifest,
-            graph,
-            diags: resolution.diags,
-            env,
-            overrides,
+            plan,
+            diagnostics: outcome.diagnostics,
+            reader,
         })
     }
 }
 
-pub fn run(cli: &Cli) -> Result<ExitCode> {
+fn overrides(cli: &Cli) -> Result<Overrides, Diagnostic> {
+    let scalars = |arguments: &[String]| -> Result<BTreeMap<String, Scalar>, Diagnostic> {
+        Ok(select::pairs(arguments)?
+            .into_iter()
+            .map(|(key, value)| (key, Scalar::parse(&value)))
+            .collect())
+    };
+
+    Ok(Overrides {
+        vars: scalars(&cli.var)?,
+        defines: scalars(&cli.define)?,
+    })
+}
+
+pub fn run(cli: &Cli) -> Result<Exit, Diagnostic> {
     let cwd = AbsPath::cwd()?;
 
-    match &cli.command {
+    match cli.command.as_ref().unwrap_or(&Command::Build {
+        tasks: Vec::new(),
+        axis: Vec::new(),
+        no_cache: false,
+        lock: false,
+        frozen: false,
+    }) {
         Command::Schema { format } => {
-            outln(match format {
+            render::line(match format {
                 Shape::Json => schema::json(),
                 Shape::Luau => schema::luau(),
             });
-            Ok(ExitCode::Success)
+            Ok(Exit::Success)
         }
+
+        Command::Explain { code } => explain(code.as_deref()),
 
         Command::Init {
             name,
@@ -198,275 +244,227 @@ pub fn run(cli: &Cli) -> Result<ExitCode> {
             let name = name
                 .clone()
                 .unwrap_or_else(|| cwd.file_name().unwrap_or("project").to_owned());
-            let created = init::run(&cwd, &name, entry.as_deref(), *format)?;
-
-            for path in [&created.manifest, &created.definitions] {
-                outln(format!("created  {}", path.relative_to(&cwd)));
-            }
-            outln("");
-            outln("next     pcmp plan");
-            Ok(ExitCode::Success)
+            let written = scaffold::write(&cwd, &name, entry.as_deref(), *format)?;
+            render::created(&[written]);
+            Ok(Exit::Success)
         }
 
-        Command::Plan => {
-            let project = Project::open(cli, &cwd)?;
-            render::plan(&project.graph, &project.root, cli.json);
-            Ok(ExitCode::Success)
-        }
+        Command::Plan { task, why } => plan(cli, &cwd, task.as_deref(), *why),
 
         Command::Check { strict } => {
-            let project = Project::open(cli, &cwd)?;
+            let project = Project::open(cli, &cwd, false)?;
 
-            let mut diags = project.diags;
-            diags.extend(check::run(&project.manifest, &project.graph));
-            diag::sort(&mut diags);
-            render::diags(&diags, cli.json);
+            let staged = sources(&project);
+            let mut diagnostics = plan::lint::run(
+                &project.manifest,
+                &project.plan,
+                &project.reader.ledger(),
+                &project.root,
+                staged.as_deref(),
+            );
+            diagnostics.extend(project.diagnostics);
+            report::sort(&mut diagnostics);
+            render::diagnostics(&diagnostics, cli.json);
 
-            Ok(match diag::worst(&diags) {
-                Some(Severity::Deny) => ExitCode::Lint,
-                Some(Severity::Warn) if *strict => ExitCode::Lint,
-                _ => ExitCode::Success,
+            Ok(match report::worst(&diagnostics) {
+                Some(Severity::Error) => Exit::Lint,
+                Some(Severity::Warning) if *strict => Exit::Lint,
+                _ => Exit::Success,
             })
-        }
-
-        Command::Explain { task, pick } => {
-            let project = Project::open(cli, &cwd)?;
-            let graph = &project.graph;
-
-            let chosen = match (task, pick) {
-                (_, true) => match menu::tasks(graph, &project.root, "explain", menu::Mode::One)? {
-                    Some(indices) => &graph.tasks[indices[0]],
-                    None => return Ok(ExitCode::Success),
-                },
-                (Some(name), false) => graph
-                    .get(name)
-                    .ok_or_else(|| Error::NoSuchTask(name.clone(), graph.known()))?,
-                (None, false) => return Err(Error::NoTaskGiven(graph.known())),
-            };
-
-            render::explain(chosen, &project.root, cli.json);
-            Ok(ExitCode::Success)
         }
 
         Command::Build {
             tasks,
-            pick,
+            axis,
             no_cache,
-        } => {
-            let project = Project::open(cli, &cwd)?;
-            let Some(selected) = choose(&project.graph, tasks, *pick, &project.root, "build")?
-            else {
-                return Ok(ExitCode::Success);
-            };
+            lock,
+            frozen,
+        } => build(cli, &cwd, tasks, axis, *no_cache, *lock, *frozen),
 
-            let report = Engine::new(project.root.clone(), project.cache)
-                .cached(!no_cache)
-                .run(&selected)?;
-
-            render::build(&report, cli.json);
-            Ok(exit_on(report.succeeded()))
+        Command::Watch { tasks, axis } => {
+            let project = Project::open(cli, &cwd, false)?;
+            let selection = select::select(&project.plan, tasks, &select::pairs(axis)?)?;
+            build::watch::run(
+                &project.root,
+                &project.cache,
+                &project.plan,
+                &selection,
+                cli.json,
+            )
         }
+    }
+}
 
-        Command::Verify { tasks, pick } => {
-            let project = Project::open(cli, &cwd)?;
-            let Some(selected) = choose(&project.graph, tasks, *pick, &project.root, "verify")?
-            else {
-                return Ok(ExitCode::Success);
-            };
+fn plan(cli: &Cli, cwd: &AbsPath, task: Option<&str>, why: bool) -> Result<Exit, Diagnostic> {
+    let project = Project::open(cli, cwd, false)?;
 
-            let engine = Engine::new(project.root.clone(), project.cache).cached(false);
-
-            // A failed build has no artifact to compare.
-            let Some(first) = pass(&engine, &selected, cli.json)? else {
-                return Ok(ExitCode::Build);
-            };
-            let Some(second) = pass(&engine, &selected, cli.json)? else {
-                return Ok(ExitCode::Build);
-            };
-
-            let differing: Vec<&str> = first
-                .iter()
-                .filter(|(id, digest)| second.get(*id) != Some(*digest))
-                .map(|(id, _)| *id)
-                .collect();
-
-            render::verify(&differing, selected.len(), cli.json);
-            Ok(exit_on(differing.is_empty()))
-        }
-
-        Command::Watch { tasks, pick } => {
-            let project = Project::open(cli, &cwd)?;
-            let Some(selected) = choose(&project.graph, tasks, *pick, &project.root, "watch")?
-            else {
-                return Ok(ExitCode::Success);
-            };
-
-            // Resolved once, so a picked set survives the manifest being re-read.
-            let names: Vec<String> = selected.tasks.iter().map(|t| t.id.clone()).collect();
-            let scope = Scope::of(&selected, &project.cache)?;
-            let json = cli.json;
-
-            build::watch::run(&scope, &project.path, || {
-                let rebuilt = rebuild(
-                    &project.path,
-                    &project.cache,
-                    &names,
-                    json,
-                    &project.env,
-                    &project.overrides,
-                );
-                if let Err(error) = rebuilt {
-                    eprintln!("error: {error}");
-                }
+    match task {
+        Some(name) => {
+            let chosen = project.plan.get(name).ok_or_else(|| {
+                Diagnostic::new(Code::NoSuchTask, format!("no task `{name}`"))
+                    .help(format!("known tasks: {}", project.plan.known()))
             })?;
-
-            Ok(ExitCode::Success)
+            render::task(chosen, cli.json);
         }
+        // Every digest is computed, and nothing is built, so this says what a build would
+        // do without doing it.
+        None if why => {
+            let engine = Engine::new(project.root.clone(), project.cache, true);
+            render::build(
+                &engine.inspect(&project.plan, &project.plan),
+                cli.json,
+                cli.timings,
+                true,
+            );
+        }
+        None => render::plan(&project.plan, cli.json),
     }
+
+    Ok(Exit::Success)
 }
 
-fn exit_on(ok: bool) -> ExitCode {
-    if ok {
-        ExitCode::Success
-    } else {
-        ExitCode::Build
-    }
-}
+fn build(
+    cli: &Cli,
+    cwd: &AbsPath,
+    tasks: &[String],
+    axis: &[String],
+    no_cache: bool,
+    lock: bool,
+    frozen: bool,
+) -> Result<Exit, Diagnostic> {
+    let project = Project::open(cli, cwd, frozen)?;
+    let selection = select::select(&project.plan, tasks, &select::pairs(axis)?)?;
 
-/// One watch cycle: re-read, re-resolve, rebuild.
-fn rebuild(
-    path: &AbsPath,
-    cache: &AbsPath,
-    selectors: &[String],
-    json: bool,
-    env: &manifest::Env,
-    overrides: &Overrides,
-) -> Result<()> {
-    let loaded = manifest::load(path, env)?;
-    let resolution = plan::resolve(&loaded.manifest, &loaded.root, overrides);
-
-    let Some(graph) = resolution.graph else {
-        render::diags(&resolution.diags, json);
-        return Ok(());
-    };
-
-    let report =
-        Engine::new(loaded.root.clone(), cache.clone()).run(&select(&graph, selectors)?)?;
-    render::build(&report, json);
-    Ok(())
-}
-
-/// One `verify` pass. [`None`] when the build failed, which this reports first.
-fn pass<'g>(
-    engine: &Engine,
-    graph: &'g Graph,
-    json: bool,
-) -> Result<Option<BTreeMap<&'g str, String>>> {
-    let report = engine.run(graph)?;
+    let engine = Engine::new(
+        project.root.clone(),
+        project.cache.clone(),
+        !no_cache && !frozen,
+    );
+    let report = engine.run(&project.plan, &selection);
+    render::build(&report, cli.json, cli.timings || !cli.json, false);
 
     if !report.succeeded() {
-        render::build(&report, json);
-        return Ok(None);
+        return Ok(Exit::Build);
+    }
+    if lock {
+        write_lock(&project, &report)?;
+    }
+    if frozen {
+        return frozen_verdict(&project, &report);
     }
 
-    fingerprints(graph).map(Some)
+    Ok(Exit::Success)
 }
 
-/// Keyed by task, so the two passes are compared by name rather than by position.
-/// A directory output folds in every file beneath it.
-fn fingerprints(graph: &Graph) -> Result<BTreeMap<&str, String>> {
-    graph
-        .tasks
-        .iter()
-        .map(|task| {
-            let mut hasher = procmp::Hasher::new();
+/// Every Luau source byte in the project, for the define check.
+///
+/// This is what `check` costs beyond resolving: one read of the sources, and no darklua.
+/// The union across tasks rather than one set per task, because a define read from another
+/// profile's tree is a false negative, and a false positive would be worse.
+///
+/// Two things are left out. Anything that is not Lua source, because a define is only ever
+/// substituted into Lua source. And the manifest itself, which lives inside the roots and
+/// names every define it declares — so including it would mean a misspelled define always
+/// found itself.
+fn sources(project: &Project) -> Option<String> {
+    let cache = project.cache.relative_to(&project.root);
+    let mut seen = std::collections::BTreeSet::new();
+    let mut text = String::new();
 
-            for artifact in build::artifacts(&task.output)? {
-                let bytes = std::fs::read(artifact.as_std())
-                    .map_err(|e| Error::Read(artifact.to_string(), e.to_string()))?;
-                hasher.field(
-                    &artifact.relative_to(&task.output),
-                    procmp::digest::of(bytes).bytes(),
-                );
+    for task in &project.plan.tasks {
+        let scope = build::inputs::Scope::of(task, &project.plan, cache.as_ref());
+        let Ok(paths) = build::inputs::everything(&scope, &project.root) else {
+            continue;
+        };
+
+        for path in paths {
+            if !matches!(path.extension(), Some("luau" | "lua")) || !seen.insert(path.clone()) {
+                continue;
             }
-
-            Ok((task.id.as_str(), hasher.finish().hex()))
-        })
-        .collect()
-}
-
-/// [`None`] when the menu was dismissed.
-fn choose(
-    graph: &Graph,
-    selectors: &[String],
-    pick: bool,
-    root: &AbsPath,
-    title: &str,
-) -> Result<Option<Graph>> {
-    if !pick {
-        return select(graph, selectors).map(Some);
+            if let Ok(absolute) = project.root.join(path.as_str())
+                && absolute != project.manifest_path
+                && let Ok(bytes) = crate::vfs::read(&absolute)
+                && let Ok(source) = String::from_utf8(bytes)
+            {
+                text.push_str(&source);
+                text.push('\n');
+            }
+        }
     }
 
-    let Some(indices) = menu::tasks(graph, root, title, menu::Mode::Many)? else {
-        return Ok(None);
+    (!text.is_empty()).then_some(text)
+}
+
+fn explain(code: Option<&str>) -> Result<Exit, Diagnostic> {
+    let Some(code) = code else {
+        for known in report::ALL {
+            render::line(known.slug());
+        }
+        return Ok(Exit::Success);
     };
 
-    Ok(Some(Graph {
-        tasks: indices.iter().map(|at| graph.tasks[*at].clone()).collect(),
-    }))
+    let known = Code::parse(code).ok_or_else(|| {
+        Diagnostic::new(Code::NoSuchTask, format!("no diagnostic code `{code}`"))
+            .help("run `pcmp explain` for the list")
+    })?;
+
+    render::line(format!("{}\n", known.slug()));
+    render::line(known.description());
+    Ok(Exit::Success)
 }
 
-/// An empty selection is an error rather than a no-op.
-fn select(graph: &Graph, selectors: &[String]) -> Result<Graph> {
-    if selectors.is_empty() {
-        return Ok(graph.clone());
-    }
+fn write_lock(project: &Project, report: &build::Report) -> Result<(), Diagnostic> {
+    let tasks = report
+        .tasks
+        .iter()
+        .filter_map(|task| {
+            let plan = project.plan.get(task.task.as_str())?;
+            Some((
+                task.task.to_string(),
+                build::record::Locked {
+                    plan: plan.digest(),
+                    artifacts: task.artifacts?,
+                },
+            ))
+        })
+        .collect();
 
-    let tasks: Vec<_> = graph
+    build::record::Lock::new(project.reader.ledger(), tasks).save(&project.root)
+}
+
+/// A frozen build has already produced its artifacts; this is only the comparison.
+fn frozen_verdict(project: &Project, report: &build::Report) -> Result<Exit, Diagnostic> {
+    let Some(lock) = build::record::Lock::load(&project.root) else {
+        return Err(Diagnostic::new(Code::Frozen, "no pcmp.lock to reproduce"));
+    };
+
+    let differing: Vec<&str> = report
         .tasks
         .iter()
         .filter(|task| {
-            selectors
-                .iter()
-                .any(|s| matches(s, &task.id) || matches(s, &task.profile))
+            lock.tasks
+                .get(task.task.as_str())
+                .is_none_or(|locked| Some(locked.artifacts) != task.artifacts)
         })
-        .cloned()
+        .map(|task| task.task.as_str())
         .collect();
 
-    if tasks.is_empty() {
-        return Err(Error::NoSuchTask(selectors.join(", "), graph.known()));
+    if differing.is_empty() {
+        render::line(format!(
+            "reproduced: {} task(s) match pcmp.lock",
+            report.tasks.len()
+        ));
+        return Ok(Exit::Success);
     }
 
-    Ok(Graph { tasks })
-}
+    render::diagnostics(
+        &[Diagnostic::new(
+            Code::Frozen,
+            format!("{} task(s) did not reproduce", differing.len()),
+        )
+        .help(differing.join(", "))],
+        false,
+    );
 
-/// `*` is the only wildcard, because a matrix identifier holds `[`, `]` and `=`. The
-/// literals must appear in order: first anchored to the start, last to the end, the
-/// rest anywhere between.
-fn matches(pattern: &str, text: &str) -> bool {
-    let literals: Vec<&str> = pattern.split('*').collect();
-
-    let (Some(first), Some(last)) = (literals.first(), literals.last()) else {
-        return false;
-    };
-    let Some(rest) = text.strip_prefix(first) else {
-        return false;
-    };
-    if literals.len() == 1 {
-        return rest.is_empty();
-    }
-
-    // The tail is claimed before the middles are searched.
-    let Some(mut rest) = rest.strip_suffix(last) else {
-        return false;
-    };
-
-    for middle in &literals[1..literals.len() - 1] {
-        let Some(at) = rest.find(middle) else {
-            return false;
-        };
-        rest = &rest[at + middle.len()..];
-    }
-
-    true
+    Ok(Exit::Build)
 }

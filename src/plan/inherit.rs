@@ -1,14 +1,22 @@
 //! Collapsing an `extends` chain into one profile.
+//!
+//! `templates` and `profiles` share one namespace, so `extends` needs no precedence rule
+//! and a name in both maps is a collision rather than a silent winner.
 
-use crate::diag::Diag;
+use std::collections::BTreeMap;
+
+use serde_json::{Map, Value};
+
 use crate::manifest::{Manifest, Profile};
-use serde_json::Map;
-
-use super::{CYCLIC_EXTENDS, UNKNOWN_BASE, known};
+use crate::report::{Code, Diagnostic, Location};
 
 /// Nearer profiles win field by field. `vars` and `define` accumulate, and `darklua`
 /// merges key by key so a profile can set `generator` without restating `bundle`.
-pub fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option<Profile> {
+pub fn flatten(
+    manifest: &Manifest,
+    name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<Profile> {
     let mut chain: Vec<&Profile> = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
     let mut cursor = name;
@@ -18,24 +26,28 @@ pub fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option
         if let Some(entered) = seen.iter().position(|step| *step == cursor) {
             // From where the chain re-enters itself, so the prefix that led there is
             // left out of the list.
-            let mut cycle = seen[entered..].to_vec();
+            let mut cycle: Vec<&str> = seen.get(entered..).unwrap_or_default().to_vec();
             cycle.push(cursor);
 
-            diags.push(
-                Diag::deny(
-                    CYCLIC_EXTENDS,
-                    format!("profile `{name}` has a cyclic `extends` chain"),
+            diagnostics.push(
+                Diagnostic::new(
+                    Code::CyclicExtends,
+                    format!("`{name}` has a cyclic `extends` chain"),
                 )
-                .help(format!("the cycle is: {}", cycle.join(", "))),
+                .at(located(manifest, name))
+                .help(format!("the cycle is: {}", cycle.join(" -> "))),
             );
             return None;
         }
 
-        let Some(profile) = manifest.profiles.get(cursor) else {
-            diags.push(
-                Diag::deny(UNKNOWN_BASE, format!("profile `{cursor}` does not exist")).help(
-                    format!("referenced by `{name}`, known: {}", known(manifest)),
-                ),
+        let Some(profile) = lookup(manifest, cursor) else {
+            diagnostics.push(
+                Diagnostic::new(Code::UnknownBase, format!("`{cursor}` does not exist"))
+                    .at(located(manifest, name).field("extends"))
+                    .help(format!(
+                        "referenced by `{name}`; known: {}",
+                        known(manifest)
+                    )),
             );
             return None;
         };
@@ -56,49 +68,92 @@ pub fn flatten(manifest: &Manifest, name: &str, diags: &mut Vec<Diag>) -> Option
 
     // `chain` runs child to ancestor, so fold from the ancestor end.
     for profile in chain.iter().rev() {
-        merge(&mut merged, profile);
+        overlay(&mut merged, profile);
     }
 
-    merged.vars.sort_keys();
-    merged.define.sort_keys();
     merged.extends = None;
-    // Extending a template produces a real build.
-    merged.is_abstract = false;
-
     Some(merged)
 }
 
-fn merge(base: &mut Profile, overlay: &Profile) {
-    if overlay.entry.is_some() {
-        base.entry.clone_from(&overlay.entry);
-    }
-    if overlay.output.is_some() {
-        base.output.clone_from(&overlay.output);
-    }
-    if overlay.sources.is_some() {
-        base.sources.clone_from(&overlay.sources);
-    }
-    if overlay.ignore.is_some() {
-        base.ignore.clone_from(&overlay.ignore);
-    }
-    if overlay.header.is_some() {
-        base.header.clone_from(&overlay.header);
-    }
-    if overlay.loaders.is_some() {
-        base.loaders.clone_from(&overlay.loaders);
+/// Applies `over` on top of `base`, one field at a time.
+pub fn overlay(base: &mut Profile, over: &Profile) {
+    replace(&mut base.entry, over.entry.as_ref());
+    replace(&mut base.output, over.output.as_ref());
+    replace(&mut base.sources, over.sources.as_ref());
+    replace(&mut base.ignore, over.ignore.as_ref());
+    replace(&mut base.header, over.header.as_ref());
+    replace(&mut base.loaders, over.loaders.as_ref());
+
+    if let Some(over) = &over.darklua {
+        merge(base.darklua.get_or_insert_with(Map::new), over);
     }
 
-    if let Some(overlay) = &overlay.darklua {
-        let merged = base.darklua.get_or_insert_with(Map::new);
-        for (key, value) in overlay {
-            merged.insert(key.clone(), value.clone());
+    extend(&mut base.vars, &over.vars);
+    extend(&mut base.define, &over.define);
+
+    for (axis, values) in &over.axes {
+        base.axes.insert(axis.clone(), values.clone());
+    }
+}
+
+/// A declared field replaces; an absent one leaves what was inherited. This is why every
+/// wholesale field is an `Option`, collections included: a child clears an inherited list
+/// by declaring it empty, which is different from not mentioning it.
+fn replace<T: Clone>(base: &mut Option<T>, over: Option<&T>) {
+    if let Some(value) = over {
+        *base = Some(value.clone());
+    }
+}
+
+fn extend<V: Clone>(base: &mut BTreeMap<String, V>, over: &BTreeMap<String, V>) {
+    for (key, value) in over {
+        base.insert(key.clone(), value.clone());
+    }
+}
+
+/// Objects merge, arrays and scalars replace, and `null` unsets — without which a child
+/// could never clear an inherited `bundle`.
+fn merge(base: &mut Map<String, Value>, over: &Map<String, Value>) {
+    for (key, value) in over {
+        match value {
+            Value::Null => {
+                base.remove(key);
+            }
+            Value::Object(nested) => match base.get_mut(key) {
+                Some(Value::Object(existing)) => merge(existing, nested),
+                _ => {
+                    base.insert(key.clone(), value.clone());
+                }
+            },
+            _ => {
+                base.insert(key.clone(), value.clone());
+            }
         }
     }
+}
 
-    for (key, value) in &overlay.vars {
-        base.vars.insert(key.clone(), value.clone());
-    }
-    for (key, value) in &overlay.define {
-        base.define.insert(key.clone(), value.clone());
-    }
+pub fn lookup<'m>(manifest: &'m Manifest, name: &str) -> Option<&'m Profile> {
+    manifest
+        .templates
+        .get(name)
+        .or_else(|| manifest.profiles.get(name))
+}
+
+fn located(manifest: &Manifest, name: &str) -> Location {
+    let map = if manifest.templates.contains_key(name) {
+        "templates"
+    } else {
+        "profiles"
+    };
+    Location::new(map, name)
+}
+
+pub fn known(manifest: &Manifest) -> String {
+    super::listed(
+        manifest
+            .templates
+            .keys()
+            .chain(manifest.profiles.keys())
+            .map(String::as_str),
+    )
 }
