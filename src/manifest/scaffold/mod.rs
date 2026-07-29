@@ -19,11 +19,12 @@ const LUAU: &str = include_str!("luau.tmpl");
 /// Tried in this order. The first that exists is used, and none existing is an error.
 const LIKELY: &[&str] = &["src/init.luau", "src/main.luau", "init.luau", "main.luau"];
 
+/// Documented on the `--format` flag rather than per variant, because a variant with help
+/// of its own makes `clap` render the whole of `pcmp init --help` in its long form, and
+/// that one screen would then look nothing like the other six.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Format {
-    /// Plain data.
     Json5,
-    /// Adds `pcmp.env`, `pcmp.now` and `pcmp.read`.
     Luau,
 }
 

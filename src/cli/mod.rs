@@ -85,8 +85,9 @@ enum Command {
 
     /// Resolve and print without building. Naming a task prints its full configuration.
     Plan {
+        /// An exact task identifier. Every task when omitted.
         task: Option<String>,
-        /// Say why each task would rebuild.
+        /// Say whether each task is stale or fresh, and why.
         #[arg(long)]
         why: bool,
     },
@@ -100,7 +101,9 @@ enum Command {
 
     /// Rebuild whenever an input or the manifest changes.
     Watch {
+        /// Profile names or exact task identifiers. All when omitted.
         tasks: Vec<String>,
+        /// Filter an expansion by coordinate. Repeatable.
         #[arg(long = "axis", value_name = "KEY=VALUE")]
         axis: Vec<String>,
     },
@@ -113,6 +116,7 @@ enum Command {
         /// Detected from common locations when omitted.
         #[arg(long)]
         entry: Option<String>,
+        /// `luau` computes values and adds `pcmp.env`, `pcmp.now` and `pcmp.read`.
         #[arg(long, value_enum, default_value_t = scaffold::Format::Json5)]
         format: scaffold::Format,
     },

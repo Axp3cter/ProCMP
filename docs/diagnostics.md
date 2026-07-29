@@ -247,8 +247,9 @@ back in as an input. Move the output outside every root, or exclude it with `ign
 
 `error`, exit code `2`
 
-No task matched the selection. A selector is a profile name or an exact task identifier.
-Use `--axis KEY=VALUE` to filter an expansion by coordinate.
+No task matched the selection, or `pcmp explain` was given a code that does not exist. A
+selector is a profile name or an exact task identifier. Use `--axis KEY=VALUE` to filter
+an expansion by coordinate, and `pcmp explain` with no argument for the list of codes.
 
 ## Building
 
