@@ -1,13 +1,51 @@
 ---
-title: ProCMP
 description: One Luau source tree, many build targets, from a single manifest.
 ---
 
 # ProCMP
 
-A minified release, a readable debug build, a Roblox variant and a Lune variant, all described in one file and built by one command.
+One Luau source tree, many build targets, from a single manifest. [darklua](https://darklua.com) is linked in, so `pcmp` is a single binary.
 
-[darklua](https://darklua.com) is linked in as a library, so `pcmp` is a single binary with nothing to install beside it.
+## Install
+
+=== "rokit"
+
+    ```sh
+    rokit add Proton-Utilities/ProCMP
+    ```
+
+=== "aftman"
+
+    ```sh
+    aftman add Proton-Utilities/ProCMP
+    ```
+
+=== "cargo"
+
+    ```sh
+    cargo install --locked --git https://github.com/Proton-Utilities/ProCMP
+    ```
+
+Add `.pcmp/` to your `.gitignore`.
+
+## Your first build
+
+```console
+$ pcmp init
+created  pcmp.json5
+next     pcmp plan
+
+$ pcmp build --var version=v1.0.0
+plan  9b35cd36a0d9
+
+  built   dev      dist/dev/app.luau
+  built   release  dist/release/app.luau
+
+2 built, 0 cached, 0 failed
+
+$ pcmp build
+0 built, 2 cached, 0 failed
+```
 
 ## What a profile changes
 
@@ -29,8 +67,6 @@ return VERSION
     local a='v1.0.0'return a
     ```
 
-    `DEBUG` folds to `false`, and the branch leaves the artifact instead of shipping as `if false then`.
-
 === "dev"
 
     ```lua title="dist/dev/app.luau"
@@ -43,28 +79,30 @@ return VERSION
     return VERSION
     ```
 
-    Nothing was stripped, so a stack trace still points at the line you wrote.
+`release` sets `DEBUG` to `false` and asks darklua to fold and strip. `dev` sets it to `true` and asks for nothing, so a stack trace still points at your source. Both are ten lines of [manifest](manifest.md).
 
-One source file, one manifest, two profiles. The header carries a version and can carry a timestamp, because `pcmp build --lock` writes down what the build read and `pcmp build --frozen` reproduces it exactly.
+## Editor completion
 
-## Where to go
+=== "Data manifest"
 
-[Install](install.md)
+    ```sh
+    pcmp schema > pcmp.schema.json
+    ```
 
-:   One binary from rokit, aftman or cargo, and editor completion for the manifest.
+    ```json5 title="pcmp.json5"
+    { $schema: "./pcmp.schema.json" }
+    ```
 
-[Your first build](first-build.md)
+=== "Luau manifest"
 
-:   From an empty project to two artifacts and a cache that holds.
+    ```sh
+    pcmp schema --format luau > pcmp.d.luau
+    ```
 
-[Manifest](manifest.md)
+    ```json title=".vscode/settings.json"
+    {
+      "luau-lsp.types.definitionFiles": ["pcmp.d.luau"]
+    }
+    ```
 
-:   Every field, what it does, and the five formats it can be written in.
-
-[CLI](cli.md)
-
-:   Selecting tasks, reading a build, and what an exit code means.
-
-[Diagnostics](diagnostics.md)
-
-:   Every code `pcmp` can report, generated from the binary itself.
+Regenerate after an upgrade. If you commit either file, [`stale-schema`](diagnostics.md#stale-schema) tells you when it has gone out of date.

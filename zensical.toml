@@ -10,12 +10,13 @@ copyright = "MIT licensed"
 docs_dir = "docs"
 site_dir = "site"
 
-# Explicit rather than derived from the directory, because the reading order is not the
-# alphabetical one and `diagnostics.md` belongs last however long it is.
+# Explicit, because the reading order is not the alphabetical one.
 nav = [
   { "ProCMP" = "index.md" },
-  { "Start" = [{ "Install" = "install.md" }, { "Your first build" = "first-build.md" }] },
-  { "Reference" = [{ "Manifest" = "manifest.md" }, { "darklua" = "darklua.md" }, { "CLI" = "cli.md" }, { "Diagnostics" = "diagnostics.md" }] },
+  { "Manifest" = "manifest.md" },
+  { "darklua" = "darklua.md" },
+  { "CLI" = "cli.md" },
+  { "Diagnostics" = "diagnostics.md" },
 ]
 
 # `diagnostics.md` is generated, and the rest of the documentation links into it by anchor.
