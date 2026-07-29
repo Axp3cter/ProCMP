@@ -3,6 +3,11 @@
 //! The only module that prints, which the crate's `print_stdout` and `print_stderr` lints
 //! make a compile error to forget. `println!` is avoided too: it panics on a closed pipe,
 //! which `pcmp plan | head` produces routinely.
+//!
+//! Three shapes, and every screen is built from them. A [`labels`] group for anything
+//! keyed by a word, a [`table`] for anything with one row per task, and a summary line
+//! counting what the screen just showed. A command decides what goes in them and never
+//! how they are spaced.
 
 #![allow(
     clippy::print_stdout,
@@ -34,6 +39,19 @@ fn json<T: serde::Serialize>(value: &T) {
     }
 }
 
+/// `1 task`, `3 tasks`.
+///
+/// Every count in the CLI is a phrase a person could say aloud, so none of them is
+/// written `task(s)`. A summary counting adjectives writes them inline instead, because
+/// `3 builts` is not a phrase.
+pub fn count(number: usize, noun: &str) -> String {
+    if number == 1 {
+        format!("{number} {noun}")
+    } else {
+        format!("{number} {noun}s")
+    }
+}
+
 /// Measured in characters, not bytes.
 fn pad(text: &str, to: usize) -> String {
     let width = text.chars().count();
@@ -48,42 +66,87 @@ fn widest<'a>(items: impl Iterator<Item = &'a str>) -> usize {
     items.map(|text| text.chars().count()).max().unwrap_or(0)
 }
 
+/// A `label  value` block.
+///
+/// Labels are padded to the widest in this group and to nothing outside it, so a group
+/// reads as a unit and two groups on one screen never have to agree on a width.
+fn labels<'a>(rows: impl IntoIterator<Item = (&'a str, String)>) {
+    let rows: Vec<_> = rows.into_iter().collect();
+    let width = widest(rows.iter().map(|(label, _)| *label));
+
+    for (label, value) in &rows {
+        line(format!("{}  {value}", pad(label, width)));
+    }
+}
+
+fn widths(rows: &[Vec<String>]) -> Vec<usize> {
+    let columns = rows.iter().map(Vec::len).max().unwrap_or(0);
+    (0..columns)
+        .map(|column| {
+            widest(
+                rows.iter()
+                    .filter_map(|row| row.get(column))
+                    .map(String::as_str),
+            )
+        })
+        .collect()
+}
+
+/// One table row: indented by two, columns separated by two.
+///
+/// The trailing trim matters. A task with nothing in its last column would otherwise end
+/// in the padding of a column it did not fill, which every diff tool flags and nothing
+/// needs.
+fn row(cells: &[String], widths: &[usize]) -> String {
+    let padded: Vec<String> = cells
+        .iter()
+        .enumerate()
+        .map(|(column, cell)| pad(cell, widths.get(column).copied().unwrap_or(0)))
+        .collect();
+
+    format!("  {}", padded.join("  ")).trim_end().to_owned()
+}
+
+fn table(rows: &[Vec<String>]) {
+    let widths = widths(rows);
+    for cells in rows {
+        line(row(cells, &widths));
+    }
+}
+
+/// The identity of the resolved plan, which is what `--frozen` compares and what names a
+/// set of artifacts. Printed once per invocation, ahead of any work.
+pub fn heading(plan: &Plan, emit: bool) {
+    if !emit {
+        labels([("plan", plan.digest().short().to_string())]);
+        line("");
+    }
+}
+
 pub fn plan(plan: &Plan, emit: bool) {
     if emit {
         return json(plan);
     }
-    if plan.is_empty() {
-        return line("no tasks");
-    }
 
-    line(format!(
-        "{} task(s), plan {}\n",
-        plan.len(),
-        plan.digest().short()
-    ));
+    heading(plan, false);
+    table(
+        &plan
+            .tasks
+            .iter()
+            .map(|task| {
+                vec![
+                    task.id.to_string(),
+                    task.output.to_string(),
+                    task.config.rules.as_ref().map_or_else(
+                        || "darklua defaults".to_owned(),
+                        |rules| count(rules.len(), "rule"),
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>(),
+    );
 
-    let rows: Vec<(&str, &str, String)> = plan
-        .tasks
-        .iter()
-        .map(|task| {
-            let rules = task.config.rules.as_ref().map_or_else(
-                || "darklua defaults".to_owned(),
-                |r| format!("{} rules", r.len()),
-            );
-            (task.id.as_str(), task.output.as_str(), rules)
-        })
-        .collect();
-
-    let id = widest(rows.iter().map(|(id, _, _)| *id));
-    let output = widest(rows.iter().map(|(_, output, _)| *output));
-
-    for (task, artifact, rules) in &rows {
-        line(format!(
-            "  {}  {}  {rules}",
-            pad(task, id),
-            pad(artifact, output)
-        ));
-    }
+    line(format!("\n{}", count(plan.len(), "task")));
 }
 
 /// One task in full, which is what `pcmp plan <TASK>` prints.
@@ -96,40 +159,60 @@ pub fn task(task: &Task, emit: bool) {
         }));
     }
 
-    line(format!("task     {}", task.id));
-    line(format!("entry    {}", task.entry));
-    line(format!("output   {}", task.output));
-    line(format!("digest   {}\n", task.digest().short()));
+    labels([
+        ("task", task.id.to_string()),
+        ("entry", task.entry.to_string()),
+        ("output", task.output.to_string()),
+        ("digest", task.digest().short().to_string()),
+    ]);
 
-    table(
+    line("");
+    section(
         "vars",
         task.vars.iter().map(|(k, v)| (k.to_string(), v.text())),
     );
     line("");
-    table(
+    section(
         "defines",
         task.defines
             .iter()
             .map(|(k, v)| (k.to_string(), v.tagged())),
     );
 
-    line("\ndarklua configuration");
-    let config = serde_json::to_string_pretty(&task.config.json()).unwrap_or_default();
-    for text in config.lines() {
+    line("");
+    line("darklua");
+    for text in serde_json::to_string_pretty(&task.config.json())
+        .unwrap_or_default()
+        .lines()
+    {
         line(format!("  {text}"));
     }
 }
 
-fn table(label: &str, rows: impl Iterator<Item = (String, String)>) {
-    let rows: Vec<_> = rows.collect();
-    if rows.is_empty() {
-        return line(format!("{label}  <none>"));
-    }
-
+/// A heading and its rows, indented like every other table.
+fn section(label: &str, pairs: impl Iterator<Item = (String, String)>) {
     line(label);
-    let width = widest(rows.iter().map(|(key, _)| key.as_str()));
-    for (key, value) in &rows {
-        line(format!("  {}  {value}", pad(key, width)));
+    table(
+        &pairs
+            .map(|(key, value)| vec![key, value])
+            .collect::<Vec<_>>(),
+    );
+}
+
+/// `plan --why` reports what a build would do and does none of it, so it must not say a
+/// task was built.
+///
+/// Padded here rather than by the table, because this is the one column whose width must
+/// not depend on the run. Measuring it would make a report of three cached tasks a
+/// character wider than a report of three built ones, and two runs of the same project
+/// would not line up.
+const fn status(status: Status, why: bool) -> &'static str {
+    match (status, why) {
+        (Status::Built, false) => "built ",
+        (Status::Built, true) => "stale ",
+        (Status::Cached, false) => "cached",
+        (Status::Cached, true) => "fresh ",
+        (Status::Failed, _) => "FAILED",
     }
 }
 
@@ -138,38 +221,46 @@ pub fn build(report: &Report, emit: bool, timings: bool, why: bool) {
         return json(report);
     }
 
-    let id = widest(report.tasks.iter().map(|task| task.task.as_str()));
-    let output = widest(report.tasks.iter().map(|task| task.output.as_str()));
+    let rows: Vec<Vec<String>> = report
+        .tasks
+        .iter()
+        .map(|task| {
+            let note = match (why, timings) {
+                (true, _) => task.why.map(|reason| reason.describe().to_owned()),
+                (false, true) => Some(format!("{} ms", task.millis)),
+                (false, false) => None,
+            };
 
-    for task in &report.tasks {
-        let label = match task.status {
-            Status::Built => "built ",
-            Status::Cached => "cached",
-            Status::Failed => "FAILED",
-        };
+            vec![
+                status(task.status, why).to_owned(),
+                task.task.to_string(),
+                task.output.to_string(),
+                note.unwrap_or_default(),
+            ]
+        })
+        .collect();
 
-        let mut row = format!(
-            "  {label}  {}  {}",
-            pad(task.task.as_str(), id),
-            pad(task.output.as_str(), output)
-        );
-        if timings {
-            let _ = write!(row, "  ({} ms)", task.millis);
-        }
-        if why && let Some(reason) = task.why {
-            let _ = write!(row, "  ({})", reason.describe());
-        }
-        line(row);
+    // A diagnostic belongs under its own row, so the widths are measured once here and
+    // the rows are written one at a time rather than by `table`.
+    let widths = widths(&rows);
+    let indent = " ".repeat(widths.first().copied().unwrap_or(0) + 4);
+
+    for (cells, task) in rows.iter().zip(&report.tasks) {
+        line(row(cells, &widths));
 
         for diagnostic in &task.diagnostics {
             for text in rendered(diagnostic).lines() {
-                line(format!("          {text}"));
+                line(format!("{indent}{text}"));
             }
         }
     }
 
     let (built, cached, failed) = report.counts();
-    line(format!("\n{built} built, {cached} cached, {failed} failed"));
+    line(if why {
+        format!("\n{built} stale, {cached} fresh, {failed} failed")
+    } else {
+        format!("\n{built} built, {cached} cached, {failed} failed")
+    });
 }
 
 /// Findings that are the command's answer, as `check`'s are.
@@ -194,25 +285,29 @@ fn report_to(diagnostics: &[Diagnostic], emit: bool, out: fn(String)) {
     if emit {
         return json(&diagnostics);
     }
-    if diagnostics.is_empty() {
-        return out("no findings".to_owned());
-    }
 
     for diagnostic in diagnostics {
         out(rendered(diagnostic));
         out(String::new());
     }
 
+    // Always, so a clean run and a dirty one end the same way and a script reading the
+    // last line has one case rather than two.
     let (errors, warnings) = report::tally(diagnostics);
-    out(format!("{errors} error(s), {warnings} warning(s)"));
+    out(format!(
+        "{}, {}",
+        count(errors, "error"),
+        count(warnings, "warning")
+    ));
 }
 
-/// One diagnostic, in the shape `error[missing-output]`, code first, so the reader
-/// knows what to pass to `pcmp explain`.
+/// One diagnostic, in the shape `error[missing-output]`, code first, so the reader knows
+/// what to pass to `pcmp explain`. The continuation lines are a `labels` group in all but
+/// name, which is why each carries a keyword and a colon.
 pub fn rendered(diagnostic: &Diagnostic) -> String {
     let marker = match diagnostic.severity() {
         Severity::Error => "error",
-        Severity::Warning => "warn",
+        Severity::Warning => "warning",
     };
 
     let mut out = format!(
@@ -222,10 +317,10 @@ pub fn rendered(diagnostic: &Diagnostic) -> String {
     );
 
     if let Some(at) = &diagnostic.at {
-        let _ = write!(out, "\n  at {at}");
+        let _ = write!(out, "\n  at:   {at}");
     }
     if let Some(source) = &diagnostic.source {
-        let _ = write!(out, "\n  {source}");
+        let _ = write!(out, "\n  from: {source}");
     }
     for help in diagnostic.help.iter().flat_map(|help| help.lines()) {
         let _ = write!(out, "\n  help: {help}");
@@ -235,9 +330,22 @@ pub fn rendered(diagnostic: &Diagnostic) -> String {
 }
 
 pub fn created(paths: &[RelPath]) {
-    for path in paths {
-        line(format!("created  {path}"));
-    }
+    labels(
+        paths
+            .iter()
+            .map(|path| ("created", path.to_string()))
+            .chain(std::iter::once(("next", "pcmp plan".to_owned()))),
+    );
+}
+
+/// `pcmp watch` opens with the roots it will react to and the plan it resolved, then
+/// prints one build report per cycle.
+pub fn watching(roots: &[String], plan: &Plan) {
+    labels(
+        roots
+            .iter()
+            .map(|root| ("watching", root.clone()))
+            .chain(std::iter::once(("plan", plan.digest().short().to_string()))),
+    );
     line("");
-    line("next     pcmp plan");
 }

@@ -407,7 +407,11 @@ template, so it may vary by profile or axis: \"dist/{profile}/app.luau\"."
 An `entry`, `output` or `header` template refers to a token that is not a var, not an
 axis and not `{profile}`, or leaves a `{` unclosed, or expands to nothing. Write `{{` and
 `}}` for literal braces. An unknown token is an error rather than an empty string,
-because a silently empty path segment is far harder to notice."
+because a silently empty path segment is far harder to notice.
+
+In `entry`, `output` and `sources` a token also may not expand to a `.` or `..` segment.
+`dist/{profile}/app.luau` under a profile named `..` would write `app.luau`, outside the
+directory the template names. A plain `/` is allowed, so `{outdir}/app.luau` still works."
             }
 
             Self::BadPath => {

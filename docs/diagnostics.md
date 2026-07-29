@@ -137,6 +137,10 @@ axis and not `{profile}`, or leaves a `{` unclosed, or expands to nothing. Write
 `}}` for literal braces. An unknown token is an error rather than an empty string,
 because a silently empty path segment is far harder to notice.
 
+In `entry`, `output` and `sources` a token also may not expand to a `.` or `..` segment.
+`dist/{profile}/app.luau` under a profile named `..` would write `app.luau`, outside the
+directory the template names. A plain `/` is allowed, so `{outdir}/app.luau` still works.
+
 ### bad-path
 
 `error`, exit code `2`

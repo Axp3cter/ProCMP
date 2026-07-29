@@ -24,8 +24,10 @@ pcmp build --var version=v1.0.0
 ```
 
 ```
-  built   dev      dist/dev/app.luau      (12 ms)
-  built   release  dist/release/app.luau  (14 ms)
+plan  9b35cd36a0d9
+
+  built   dev      dist/dev/app.luau      12 ms
+  built   release  dist/release/app.luau  14 ms
 
 2 built, 0 cached, 0 failed
 ```
@@ -45,8 +47,11 @@ pcmp plan --why
 ```
 
 ```
-  built  release  dist/release/app.luau  (a source file changed)
+  stale   release  dist/release/app.luau  a source file changed
+  fresh   dev      dist/dev/app.luau
 ```
+
+`plan --why` says what a build would do and does none of it, which is why it reports `stale` and `fresh` rather than `built` and `cached`.
 {% endstep %}
 {% endstepper %}
 
@@ -114,8 +119,8 @@ In `dev` that folds to `if true` and stays. In `release` it folds to `if false`,
 Misspell one and `pcmp check` says so, through [`unreachable-define`](diagnostics.md#unreachable-define).
 
 ```
-warn[unreachable-define]: `DEBUGG` appears in no source `release` reads
-  at profiles.release.define.DEBUGG
+warning[unreachable-define]: `DEBUGG` appears in no source `release` reads
+  at:   profiles.release.define.DEBUGG
 ```
 
 ## axes
@@ -140,12 +145,14 @@ An axis is a list of values, or a map from a value to settings of its own. The s
 
 ```
 $ pcmp plan
-4 task(s), plan 9b35cd36a0d9
+plan  9b35cd36a0d9
 
-  dist[flavour=dev,target=lune]    dist/lune/dev.luau
-  dist[flavour=dev,target=roblox]  dist/roblox/dev.luau
-  dist[flavour=min,target=lune]    dist/lune/min.luau
-  dist[flavour=min,target=roblox]  dist/roblox/min.luau
+  dist[flavour=dev,target=lune]    dist/lune/dev.luau    10 rules
+  dist[flavour=dev,target=roblox]  dist/roblox/dev.luau  10 rules
+  dist[flavour=min,target=lune]    dist/lune/min.luau    12 rules
+  dist[flavour=min,target=roblox]  dist/roblox/min.luau  12 rules
+
+4 tasks
 ```
 
 Each axis is also a var, so `{target}` and `PCMP_TARGET` both work.

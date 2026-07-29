@@ -33,11 +33,15 @@ Because a task identifier is `profile[axis=value]`, a profile name cannot contai
 
 ```
 $ pcmp build
-  built   dev      dist/dev/app.luau      (12 ms)
-  cached  release  dist/release/app.luau  (0 ms)
+plan  9b35cd36a0d9
+
+  built   dev      dist/dev/app.luau      12 ms
+  cached  release  dist/release/app.luau  0 ms
 
 1 built, 1 cached, 0 failed
 ```
+
+Every screen opens with the digest of the plan it resolved, lists one row per task, and closes with a count of what it just showed. `plan`, `build` and `watch` all read the same way for that reason.
 
 Tasks run in parallel. A failure is collected rather than aborted on, so one run names every task that went wrong.
 
@@ -45,8 +49,15 @@ A task is skipped when its configuration, its sources and its artifacts are all 
 
 ```
 $ pcmp plan --why
-  built  dev  dist/dev/app.luau  (a source file changed)
+plan  9b35cd36a0d9
+
+  stale   dev      dist/dev/app.luau      a source file changed
+  fresh   release  dist/release/app.luau
+
+1 stale, 1 fresh, 0 failed
 ```
+
+`plan --why` builds nothing, so it says `stale` and `fresh` where a build says `built` and `cached`.
 
 `pcmp plan <TASK>` prints everything one task resolved to, including the darklua configuration it compiles to.
 

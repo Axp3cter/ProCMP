@@ -64,15 +64,31 @@ pub fn run(
     );
 
     let engine = Engine::new(root.clone(), cache.clone(), true);
+    let cycle = || render::build(&engine.run(plan, selection), emit, !emit, false);
+
+    // Nothing else says the process is alive or which directories reach it, and `--json`
+    // is a stream of build reports that a banner would make unparseable.
+    if !emit {
+        let listed: Vec<String> = roots.iter().map(AbsPath::to_string).collect();
+        render::watching(&listed, plan);
+    }
 
     // Watching is established first, so an edit made during the first build is queued
     // rather than lost.
-    render::build(&engine.run(plan, selection), emit, !emit, false);
+    cycle();
 
     for batch in receiver {
+        // One blank line, so consecutive rounds do not read as a single report.
+        let separated = || {
+            if !emit {
+                render::line("");
+            }
+            cycle();
+        };
+
         // A failed batch means lost events, and a rebuild is cheaper than a wrong answer.
         let Ok(events) = batch else {
-            render::build(&engine.run(plan, selection), emit, !emit, false);
+            separated();
             continue;
         };
 
@@ -93,7 +109,7 @@ pub fn run(
         }
 
         if touched.iter().any(|path| ours_not(path, &ours)) {
-            render::build(&engine.run(plan, selection), emit, !emit, false);
+            separated();
         }
     }
 

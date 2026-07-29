@@ -320,6 +320,7 @@ fn plan(cli: &Cli, cwd: &AbsPath, task: Option<&str>, why: bool) -> Result<Exit,
         // do without doing it.
         None if why => {
             let engine = Engine::new(project.root.clone(), project.cache, true);
+            render::heading(&project.plan, cli.json);
             render::build(
                 &engine.inspect(&project.plan, &project.plan),
                 cli.json,
@@ -350,6 +351,8 @@ fn build(
         project.cache.clone(),
         !no_cache && !frozen,
     );
+
+    render::heading(&project.plan, cli.json);
     let report = engine.run(&project.plan, &selection);
     render::build(&report, cli.json, cli.timings || !cli.json, false);
 
@@ -464,18 +467,26 @@ fn frozen_verdict(project: &Project, report: &build::Report) -> Result<Exit, Dia
         .map(|task| task.task.as_str())
         .collect();
 
+    // A second summary line under the build's own, counted the same way, so the verdict
+    // reads as part of the report rather than as an announcement.
+    render::line(format!(
+        "{} reproduced, {} differing",
+        report.tasks.len() - differing.len(),
+        differing.len()
+    ));
+
     if differing.is_empty() {
-        render::line(format!(
-            "reproduced: {} task(s) match pcmp.lock",
-            report.tasks.len()
-        ));
         return Ok(Exit::Success);
     }
 
+    render::line("");
     render::diagnostics(
         &[Diagnostic::new(
             Code::Frozen,
-            format!("{} task(s) did not reproduce", differing.len()),
+            format!(
+                "{} did not reproduce",
+                render::count(differing.len(), "task")
+            ),
         )
         .help(differing.join(", "))],
         false,

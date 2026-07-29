@@ -96,10 +96,6 @@ impl Plan {
         self.tasks.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.tasks.is_empty()
-    }
-
     pub fn get(&self, id: &str) -> Option<&Task> {
         self.tasks.iter().find(|task| task.id.as_str() == id)
     }
@@ -285,7 +281,7 @@ fn task(
     let mut sources = Vec::new();
     for (index, source) in profile.sources.iter().flatten().enumerate() {
         let expanded = report(
-            template::expand(source, &vars).and_then(|text| RelPath::new(&text)),
+            template::expand_path(source, &vars),
             at.clone().field("sources").index(index),
             diagnostics,
         )?;
@@ -481,7 +477,7 @@ fn path(
     };
 
     report(
-        template::expand(declared, vars).and_then(|text| RelPath::new(&text)),
+        template::expand_path(declared, vars),
         at.clone().field(field),
         diagnostics,
     )
