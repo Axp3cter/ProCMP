@@ -232,6 +232,8 @@ pcmp.root                         -- the manifest's directory
 pcmp.darklua                      -- the linked darklua version
 ```
 
+`pcmp.now()` answers differently every second and its answer lands in the resolved task, so a manifest that calls it rebuilds on every run. [Pinning the clock](cli.md#pinning-the-clock) gives the cache back while you work.
+
 {% hint style="warning" %}
 There is deliberately no `pcmp.exec`.
 

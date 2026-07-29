@@ -71,6 +71,26 @@ Commit `pcmp.lock`. A diff of it in review shows exactly what changed about a bu
 
 Ignore `.pcmp/`, which is the local build cache and is disposable.
 
+### Pinning the clock
+
+Whatever `pcmp.now()` returns lands in the resolved task, and the plan digest covers the task, so a manifest that calls it resolves to a different task every second and an ordinary build never hits the cache. Pin the clock and caching comes back.
+
+{% tabs %}
+{% tab title="--now" %}
+```sh
+pcmp build --now 2026-01-01T00:00:00Z
+```
+{% endtab %}
+
+{% tab title="SOURCE_DATE_EPOCH" %}
+```sh
+SOURCE_DATE_EPOCH=1767225600 pcmp build
+```
+{% endtab %}
+{% endtabs %}
+
+The two are the same instant written two ways. `--now` takes an RFC 3339 instant in UTC to the second and beats `SOURCE_DATE_EPOCH`, which takes seconds since the Unix epoch and is the convention the rest of a release pipeline already reads. A frozen build beats both, because the lock is the point of freezing.
+
 {% hint style="info" %}
 `pcmp check` reports [`unrecorded-reading`](diagnostics.md#unrecorded-reading) when a manifest reads something and no lock records it.
 

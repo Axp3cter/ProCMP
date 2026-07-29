@@ -59,7 +59,7 @@ jobs:
       # a user gets, and leaves nothing behind to keep in step with the code.
       - name: Build a fixture, lock it, and reproduce it
         run: |
-          set -eux
+          set -euxo pipefail
           pcmp="$GITHUB_WORKSPACE/target/release/pcmp"
           mkdir -p /tmp/fixture/src && cd /tmp/fixture
 
@@ -93,24 +93,38 @@ jobs:
           }
           MANIFEST
 
-          # A manifest that reads the clock, and no lock yet.
-          "$pcmp" check --strict && exit 1 || true
+          # This manifest reads the clock and no lock records the answer, which is the
+          # one thing `--strict` is there to catch.
+          ! "$pcmp" check --strict
 
           "$pcmp" build --lock
           test -f pcmp.lock
           "$pcmp" check --strict
 
-          # The cache must settle: a second build rebuilds nothing.
-          "$pcmp" build --json | jq -e '[.tasks[] | select(.status != "cached")] | length == 0'
-
-          # And the build must reproduce a second later, timestamp included.
+          # The property the whole tool exists for. A different second, a timestamp
+          # baked into the header, and the artifacts still match the lock.
           sleep 1
           "$pcmp" build --frozen
 
-          # An artifact edited by hand is noticed, not trusted.
+          # The honest inverse, with the clock live again. A manifest that asks the time
+          # is a different build each second, so this must not report a cache hit.
+          sleep 1
+          "$pcmp" build --json | jq -e '[.tasks[] | select(.status == "cached")] | length == 0'
+
+          # Everything below pins the clock, so each check varies one thing. Without the
+          # pin, `pcmp.now()` alone would explain every rebuild and prove nothing.
+          export SOURCE_DATE_EPOCH=1700000000
+
+          # The pinned instant is now the only one, so the first build settles the cache
+          # and the second finds nothing to do.
+          "$pcmp" build
+          "$pcmp" build --json | jq -e '[.tasks[] | select(.status != "cached")] | length == 0'
+
+          # An artifact edited by hand is noticed, not trusted. Nothing else moved, so a
+          # rebuild here can only come from the artifact digest.
           echo "-- tampered" > dist/fixture.luau
           "$pcmp" build --json | jq -e '[.tasks[] | select(.status != "built")] | length == 0'
-          grep -q "tampered" dist/fixture.luau && exit 1 || true
+          ! grep -q "tampered" dist/fixture.luau
 
   audit:
     name: Advisories
