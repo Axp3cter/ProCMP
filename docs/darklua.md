@@ -1,7 +1,6 @@
 ---
 title: darklua
 description: darklua's own configuration, passed through untouched.
-icon: lucide/settings
 ---
 
 # darklua
@@ -30,21 +29,15 @@ darklua: {
 1.  These match each file's path relative to the entry, so `src/**` matches nothing when the entry is already `src/init.luau`. A filter that matches nothing is the usual cause of [`no-output`](diagnostics.md#no-output).
 2.  A rule is a bare name, or an object with a `rule` key and that rule's own settings.
 
-[darklua's configuration reference :octicons-link-external-16:](https://darklua.com/docs/config/)
+The full reference is at [darklua.com/docs/config](https://darklua.com/docs/config/).
 
 ## Generators
 
-`retain_lines`
-
-:   Keeps the original line structure, and is darklua's default.
-
-`dense`
-
-:   Compact, one long line per statement run.
-
-`readable`
-
-:   Reformatted and indented.
+| Generator | Output |
+| --- | --- |
+| `retain_lines` | keeps the original line structure, and is darklua's default |
+| `dense` | compact, one long line per statement run |
+| `readable` | reformatted and indented |
 
 `dense` and `readable` take a `column_span`, either as an object or on their own as a string.
 
@@ -74,15 +67,13 @@ darklua
   }
 ```
 
-!!! success "That block is a valid .darklua.json"
-
-    Keys come out sorted, so two runs print the same thing and a diff of the two says something.
+That block is a valid `.darklua.json`. Keys come out sorted, so two runs print the same thing and a diff of the two says something.
 
 ## Merging
 
 `darklua` merges key by key down an `extends` chain, so a profile can set `generator` without restating `bundle`.
 
-| | |
+| Inherited value | What a child does to it |
 | --- | --- |
 | object | merges recursively |
 | array | replaces outright |
@@ -99,20 +90,17 @@ Without `null` a child could never clear an inherited `bundle`.
 
 Two orderings are checked, both of them darklua's own.
 
-[`fold-before-inject`](diagnostics.md#fold-before-inject)
-
-:   `compute_expression` scheduled before `inject_global_value`. Folding cannot see a value substituted after it, so the define does nothing.
-
-[`branch-before-fold`](diagnostics.md#branch-before-fold)
-
-:   `remove_unused_if_branch` scheduled before `compute_expression`. A branch is only removable once its condition has folded to a constant, so the branch survives.
+| Code | What it catches |
+| --- | --- |
+| [`fold-before-inject`](diagnostics.md#fold-before-inject) | `compute_expression` before `inject_global_value`, so folding cannot see the substituted value and the define does nothing |
+| [`branch-before-fold`](diagnostics.md#branch-before-fold) | `remove_unused_if_branch` before `compute_expression`, so the condition is not a constant yet and the branch survives |
 
 Nothing beyond those, because a lint stricter than the tool it lints for would reject working manifests.
 
-!!! info "Empty tables in a Luau manifest"
+## Empty tables in a Luau manifest
 
-    An empty Luau table is both an empty list and an empty map, and Luau has no syntax to say which.
+An empty Luau table is both an empty list and an empty map, and Luau has no syntax to say which.
 
-    `pcmp` reads `{}` as an empty list at the keys darklua treats as lists, which are `rules`, `apply_to_files`, `skip_files`, `excludes` and `globals`. Everywhere else it stays a map, so `aliases = {}` still means no aliases.
+`pcmp` reads `{}` as an empty list at the keys darklua treats as lists, which are `rules`, `apply_to_files`, `skip_files`, `excludes` and `globals`. Everywhere else it stays a map, so `aliases = {}` still means no aliases.
 
-    In a data format the question does not arise, because you write `[]` or `{}` and mean it.
+In a data format the question does not arise, because you write `[]` or `{}` and mean it.

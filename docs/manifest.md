@@ -1,7 +1,6 @@
 ---
 title: Manifest
 description: Every field, and what it does.
-icon: lucide/file-cog
 ---
 
 # Manifest
@@ -14,9 +13,7 @@ pcmp.json5   pcmp.json   pcmp.jsonc   pcmp.toml   pcmp.luau
 
 Format comes from the extension, never from the content. Relative paths always resolve against the manifest's own directory, not the working directory.
 
-!!! success "All five formats resolve to the same plan"
-
-    The digest included. It does not depend on where the project is checked out, or on how the manifest is arranged, only on what it means.
+All five formats resolve to the same plan, digest included. That digest does not depend on where the project is checked out or on how the manifest is arranged, only on what it means.
 
 === "pcmp.json5"
 
@@ -72,23 +69,17 @@ Format comes from the extension, never from the content. Relative paths always r
 
 ## Top level
 
-`vars`
-
-:   Named values every profile starts from.
-
-`templates`
-
-:   Never built, and exist to be extended.
-
-`profiles`
-
-:   Built, once each, or once per axis combination.
+| Key | What it holds |
+| --- | --- |
+| `vars` | named values every profile starts from |
+| `templates` | never built, and exist to be extended |
+| `profiles` | built, once each, or once per axis combination |
 
 A name may appear in `templates` or in `profiles`, not both. `extends` looks in one namespace so that it needs no precedence rule, and a name in both is [`name-collision`](diagnostics.md#name-collision).
 
 ## Profile fields
 
-| Field | |
+| Field | What it does |
 | --- | --- |
 | `extends` | a template or profile to inherit from |
 | `entry` | a file to bundle, or a directory to process as a tree |
@@ -102,19 +93,17 @@ A name may appear in `templates` or in `profiles`, not both. `extends` looks in 
 | `darklua` | [darklua's own configuration](darklua.md), verbatim |
 | `axes` | expands the profile into one task per combination |
 
+Everything except `vars` and `define` replaces wholesale down an `extends` chain. Those two accumulate, and `darklua` merges key by key.
+
+## Templates
+
 `entry`, `output`, `sources` and `header` are templates. `{profile}`, every var and every axis expand, `{{` and `}}` are literal braces, and an unknown token is [`bad-template`](diagnostics.md#bad-template) rather than an empty string.
 
-!!! danger "A token cannot walk the tree"
-
-    In a path, a token that expands to a `.` or `..` segment is refused. `dist/{profile}/app.luau` under a profile named `..` would write `app.luau`, outside the directory the template names, and the template would still read as though it wrote into `dist/`.
-
-    A plain `/` is fine, so `{outdir}/app.luau` with `outdir` set to `build/dist` works.
+In a path, a token may not expand to a `.` or `..` segment. `dist/{profile}/app.luau` under a profile named `..` would write `app.luau`, outside the directory the template names, so it is refused. A plain `/` is allowed, and `{outdir}/app.luau` with `outdir` set to `build/dist` works.
 
 ## Vars and defines
 
-A var names a value used to build a path, a header, or a constant. A define names a value substituted into your source.
-
-Every var is also a define, uppercased and prefixed. The reverse does not hold, because a define needs no name that is also a path token.
+A var names a value used to build a path, a header, or a constant. A define names a value substituted into your source. Every var is also a define, uppercased and prefixed. The reverse does not hold, because a define needs no name that is also a path token.
 
 ```json5
 vars:   { name: "app", retries: 3 },
@@ -123,9 +112,7 @@ define: { DEBUG: false }
 
 Both take a string, a number or a boolean. The type survives into the emitted Luau, so `retries: 3` is a number your source can do arithmetic on, and it reaches the cache key type-tagged, which is why `true` and `"true"` are different builds.
 
-!!! warning "Integers are bounded at 2^53"
-
-    An integer must survive a round trip through an IEEE double. Past that is [`bad-define`](diagnostics.md#bad-define), not a silent change of value.
+An integer must survive a round trip through an IEEE double, which bounds it at 2^53. Past that is [`bad-define`](diagnostics.md#bad-define), not a silent change of value.
 
 ## Entry and output
 
@@ -147,30 +134,32 @@ Both take a string, a number or a boolean. The type survives into the emitted Lu
 
 `header` applies to whatever darklua emits as source, meaning `.luau` and `.lua`, or whatever `darklua.lua_extension` says. A `copy` loader can put a `.png` in the output tree, and a `.png` with a Lua comment on the front is a broken `.png`.
 
-Two tasks writing one path is [`output-collision`](diagnostics.md#output-collision). A task writing inside an entry tree is [`output-in-inputs`](diagnostics.md#output-in-inputs).
-
-!!! danger "Writing outside the project"
-
-    An `output` that climbs out with `..` is legal, and sometimes intended.
-
-    `pcmp check` reports it as [`output-outside-root`](diagnostics.md#output-outside-root), because it means ProCMP is writing where nobody reading the manifest expects it to.
+Two tasks writing one path is [`output-collision`](diagnostics.md#output-collision), and a task writing inside an entry tree is [`output-in-inputs`](diagnostics.md#output-in-inputs). An `output` that climbs out of the project with `..` is legal, and reported as [`output-outside-root`](diagnostics.md#output-outside-root) because it means `pcmp` is writing where nobody reading the manifest expects it to.
 
 ## Inputs
 
-A build reads every file under the manifest's directory, plus every `sources` root, minus anything `ignore` matches.
+A build reads every file under the manifest's directory, plus every `sources` root, minus anything `ignore` matches. Outputs and the cache directory are never inputs, so you do not have to exclude them, and extension is never a filter either, because a loader can make a `.json` or a `.png` a real input.
 
-```json5
-sources: ["../shared"],
-ignore: ["**/Packages/**"],
+That set is measured twice, and the difference is what keeps a large `sources` root cheap.
+
+Shape
+
+:   Which paths exist under every root, and what kind each one is. No file is opened. A file appearing, vanishing or being retargeted as a symlink moves this, which is how a build can depend on a file's absence.
+
+Reads
+
+:   The contents of the files darklua actually opened. Editing a file nothing requires changes neither digest, so it costs nothing.
+
+`pcmp plan --why` names whichever of the two moved.
+
+```console
+$ pcmp plan --why
+  stale   release  dist/release/app.luau  a file appeared, vanished or moved
 ```
 
-Outputs and the cache directory are never inputs, so you do not have to exclude them.
+!!! warning "A build can only open what the manifest declares"
 
-Extension is never a filter either, because a loader can make a `.json` or a `.png` a real input.
-
-!!! danger "A build can only open what the manifest declares"
-
-    Sources are staged in memory before darklua runs, so a file outside every root cannot be reached at all. It fails the build with [`undeclared-input`](diagnostics.md#undeclared-input), naming the exact path, rather than quietly deciding your output.
+    Sources are staged in memory before darklua runs, so a file outside every root cannot be reached at all. The build fails with [`undeclared-input`](diagnostics.md#undeclared-input) naming the exact path, rather than quietly deciding your output.
 
     Add the directory that holds it to `sources`.
 
@@ -191,7 +180,7 @@ Require them with the extension.
 local config = require("@self/assets/config.json")
 ```
 
-| `use` | |
+| `use` | Behaviour |
 | --- | --- |
 | `copy` | passed through untouched |
 | `skip` | excluded from the output |
@@ -201,9 +190,7 @@ local config = require("@self/assets/config.json")
 
 The content forms also take an encoding, one of `/base64`, `/zstd`, `/gzip` or `/zlib`.
 
-!!! info "Order decides"
-
-    darklua takes the first pattern that matches. That is why `loaders` is a list in every format and never a map keyed by pattern: only a list has an order, and a map that happened to have one would make the winner depend on how the manifest was written.
+darklua takes the first pattern that matches. That is why `loaders` is a list in every format and never a map keyed by pattern: only a list has an order, and a map that happened to have one would make the winner depend on how the manifest was written.
 
 ## Axes
 
@@ -223,9 +210,7 @@ Each combination becomes a task named by its coordinates, and each axis is also 
 
 ## The pcmp API
 
-Luau manifests only, and the manifest's only channel outward.
-
-Everything here is recorded, which is what makes it safe to use. See [Reproducing a build](cli.md#reproducing-a-build).
+Luau manifests only, and the manifest's only channel outward. Everything here is recorded, which is what makes it safe to use. See [Reproducing a build](cli.md#reproducing-a-build).
 
 ```lua
 pcmp.env("VERSION")               -- errors when unset
@@ -239,9 +224,7 @@ pcmp.darklua                      -- the linked darklua version
 
 `pcmp.now()` answers differently every second and its answer lands in the resolved task, so a manifest that calls it rebuilds on every run. [Pinning the clock](cli.md#pinning-the-clock) gives the cache back while you work.
 
-!!! warning "There is deliberately no pcmp.exec"
-
-    Recording a subprocess honestly would mean hashing its whole environment, and a ledger that lies is worse than no ledger. Pass a git SHA in with `--var`.
+There is deliberately no `pcmp.exec`. Recording a subprocess honestly would mean hashing its whole environment, and a ledger that lies is worse than no ledger. Pass a git SHA in with `--var`.
 
 ??? note "What the sandbox removes"
 

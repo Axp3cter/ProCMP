@@ -1,14 +1,11 @@
 ---
 title: CLI
 description: Selecting tasks, reading a build, and what an exit code means.
-icon: lucide/terminal
 ---
 
 # CLI
 
-`pcmp help` lists every command and flag. `pcmp explain <CODE>` describes any diagnostic you see, and [Diagnostics](diagnostics.md) is the same catalogue as a page.
-
-None of that is repeated here, so none of it can go stale. This page covers what those cannot.
+`pcmp help` lists every command and flag, and `pcmp explain <CODE>` describes any diagnostic you see. Neither is repeated here, so neither can go stale. This page covers what those cannot.
 
 ## Selecting tasks
 
@@ -22,11 +19,7 @@ pcmp build dist --axis target=roblox
 
 A selector is a profile name or an exact task identifier. `--axis KEY=VALUE` filters an expansion by coordinate, and repeats.
 
-!!! info "There is no wildcard"
-
-    `--axis` says what a glob would have said, cannot match something by accident, and needs no dialect to explain. A selection that matches nothing is [`no-such-task`](diagnostics.md#no-such-task) rather than a quiet success.
-
-    Because a task identifier is `profile[axis=value]`, a profile name cannot contain `[`, `]`, `,` or `=`. That is [`bad-name`](diagnostics.md#bad-name).
+There is no wildcard. `--axis` says what a glob would have said, cannot match something by accident, and needs no dialect to explain. A selection that matches nothing is [`no-such-task`](diagnostics.md#no-such-task) rather than a quiet success. Because a task identifier is `profile[axis=value]`, a profile name cannot contain `[`, `]`, `,` or `=`, which is [`bad-name`](diagnostics.md#bad-name).
 
 ## Reading a build
 
@@ -44,7 +37,7 @@ Every screen opens with the digest of the plan it resolved, lists one row per ta
 
 Tasks run in parallel. A failure is collected rather than aborted on, so one run names every task that went wrong.
 
-A task is skipped when its configuration, its sources and its artifacts are all unchanged. `--why` names whichever of those moved.
+A task is skipped when its configuration, its sources and its artifacts are all unchanged. `--why` names whichever of those moved, and builds nothing, which is why it says `stale` and `fresh` where a build says `built` and `cached`.
 
 ```console
 $ pcmp plan --why
@@ -55,8 +48,6 @@ plan  9b35cd36a0d9
 
 1 stale, 1 fresh, 0 failed
 ```
-
-`plan --why` builds nothing, so it says `stale` and `fresh` where a build says `built` and `cached`.
 
 `pcmp plan <TASK>` prints everything one task resolved to, including the darklua configuration it compiles to.
 
@@ -84,7 +75,7 @@ Every `sources` root gets a `watching` line of its own, and each rebuild is sepa
 
 !!! warning "The plan is resolved once, at startup"
 
-    Re-reading the manifest on every change would mean a half-saved file producing a run of parse errors. An edit to the manifest is reported on stderr and otherwise ignored until you restart.
+    Re-reading the manifest on every change would mean a half-saved file producing a run of parse errors. An edit to the manifest is reported on stderr and otherwise ignored until you restart, so a change you make there does not take effect the way a change to a source file does.
 
 ## Reproducing a build
 
@@ -101,7 +92,7 @@ pcmp build --lock      # build, and record what it read
 pcmp build --frozen    # build from that record, and fail if anything differs
 ```
 
-`--frozen` answers the manifest from `pcmp.lock` instead of from the outside, so `pcmp.now()` returns the instant the lock pinned. That is why a build timestamp costs you nothing.
+`--frozen` answers the manifest from `pcmp.lock` instead of from the outside, so `pcmp.now()` returns the instant the lock pinned. That is why a build timestamp costs nothing.
 
 ```console
 $ pcmp build --frozen
@@ -115,6 +106,8 @@ plan  9b35cd36a0d9
 ```
 
 Commit `pcmp.lock`. A diff of it in review shows exactly what changed about a build.
+
+Until a lock exists, `pcmp check` reports [`unrecorded-reading`](diagnostics.md#unrecorded-reading). The warning goes away once one does.
 
 ### Pinning the clock
 
@@ -134,10 +127,6 @@ Whatever `pcmp.now()` returns lands in the resolved task, and the plan digest co
 
 The two are the same instant written two ways. `--now` takes an RFC 3339 instant in UTC to the second and beats `SOURCE_DATE_EPOCH`, which takes seconds since the Unix epoch and is the convention the rest of a release pipeline already reads. A frozen build beats both, because the lock is the point of freezing.
 
-!!! info "Until a lock exists"
-
-    `pcmp check` reports [`unrecorded-reading`](diagnostics.md#unrecorded-reading) when a manifest reads something and no lock records it. The warning goes away once a lock exists.
-
 ## Machine-readable output
 
 `--json` is byte-identical for the same build, so it can be diffed.
@@ -146,6 +135,8 @@ The two are the same instant written two ways. `--now` takes an RFC 3339 instant
 pcmp build --json | jq '.tasks[] | select(.status == "failed")'
 pcmp check --json | jq '[.[] | select(.severity == "error")] | length'
 ```
+
+Findings that are the command's answer go to stdout. Findings that mean the command failed go to stderr, so `pcmp build > report.json` still tells you why it did not work. With `--json` both go to stdout, because that is where machine output lives and the exit code already says which happened.
 
 Every diagnostic has the same shape wherever it appears.
 
@@ -162,39 +153,18 @@ Every diagnostic has the same shape wherever it appears.
     }
     ```
 
-    `code`
-
-    :   Stable, and never reused for another meaning. See [Diagnostics](diagnostics.md).
-
-    `severity`
-
-    :   `error` or `warning`.
-
-    `at`
-
-    :   A manifest key path such as `profiles.release.darklua.rules[2]`. A key path rather than a line number, because a value a Luau manifest computed does not have one.
-
-    `message`
-
-    :   One line, lowercase, no trailing stop.
-
-    `help`
-
-    :   Zero or more lines of what to do.
-
-    `source`
-
-    :   The operating system's own words, when something outside `pcmp` refused.
-
-!!! info "Which stream a finding goes to"
-
-    Findings that are the command's answer go to stdout. Findings that mean the command failed go to stderr, so `pcmp build > report.json` still tells you why it did not work.
-
-    With `--json` both go to stdout, because that is where machine output lives and the exit code already says which happened.
+    | Field | Meaning |
+    | --- | --- |
+    | `code` | stable, and never reused for another meaning |
+    | `severity` | `error` or `warning` |
+    | `at` | a manifest key path such as `profiles.release.darklua.rules[2]`, rather than a line number, because a value a Luau manifest computed does not have one |
+    | `message` | one line, lowercase, no trailing stop |
+    | `help` | zero or more lines of what to do |
+    | `source` | the operating system's own words, when something outside `pcmp` refused |
 
 ## Exit codes
 
-| | |
+| Code | Meaning |
 | --- | --- |
 | `0` | success |
 | `1` | a task failed, or a `--frozen` build did not reproduce |

@@ -620,18 +620,16 @@ pub fn reference() -> String {
         "---\n\
          title: Diagnostics\n\
          description: Every code pcmp can report, and what to do about it.\n\
-         icon: lucide/circle-alert\n\
          ---\n\n\
          # Diagnostics\n\n\
          A code names one failure and never another. A message may be reworded, a code may \
          not be reused.\n\n\
+         This page is written by `pcmp explain --format markdown` and checked in CI against \
+         the binary, so it cannot describe a version of `pcmp` you are not running. The \
+         same text is available one code at a time.\n\n\
          ```sh\n\
          pcmp explain missing-output\n\
-         ```\n\n\
-         !!! info \"Generated from the binary\"\n\n\
-         \x20   `pcmp explain --format markdown` writes this page, and CI fails when the \
-         committed copy stops matching what the binary would print. Nothing here can \
-         describe a version of `pcmp` you are not running.\n",
+         ```\n",
     );
 
     for phase in Phase::ORDER {
@@ -643,11 +641,12 @@ pub fn reference() -> String {
                 Severity::Warning => "warning",
             };
 
-            // A definition list rather than a sentence, so severity and exit code are one
-            // scannable block on a page of forty-four entries.
+            // One line rather than a definition list. Severity is an attribute of the
+            // code and not a term being defined, and forty-four two-line blocks would
+            // make the page a third longer for nothing.
             let _ = write!(
                 out,
-                "\n### {}\n\n`{severity}`\n:   Exits `{}`.\n\n{}\n",
+                "\n### {}\n\n`{severity}`, exits `{}`\n\n{}\n",
                 code.slug(),
                 code.exit() as u8,
                 code.description()

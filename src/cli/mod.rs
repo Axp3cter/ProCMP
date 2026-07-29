@@ -24,7 +24,11 @@ use crate::vfs::AbsPath;
     name = "pcmp",
     version,
     long_version = concat!(env!("CARGO_PKG_VERSION"), "\ndarklua ", "0.19.0"),
-    about = "Multi-target build composition for Luau projects"
+    about = "Multi-target build composition for Luau projects",
+    // There is no default subcommand. One would only fire with no arguments, so `pcmp`
+    // would build and `pcmp release` would report an unrecognised subcommand, which is
+    // a worse answer than asking for the word `build`.
+    arg_required_else_help = true
 )]
 pub struct Cli {
     /// Manifest to use. Discovered from the working directory upwards otherwise.
@@ -60,7 +64,7 @@ pub struct Cli {
     timings: bool,
 
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 }
 
 #[derive(Debug, Subcommand)]
@@ -255,13 +259,7 @@ fn overrides(cli: &Cli) -> Result<Overrides, Diagnostic> {
 pub fn run(cli: &Cli) -> Result<Exit, Failure> {
     let cwd = AbsPath::cwd()?;
 
-    match cli.command.as_ref().unwrap_or(&Command::Build {
-        tasks: Vec::new(),
-        axis: Vec::new(),
-        no_cache: false,
-        lock: false,
-        frozen: false,
-    }) {
+    match &cli.command {
         Command::Schema { format } => {
             render::line(match format {
                 Shape::Json => schema::json(),

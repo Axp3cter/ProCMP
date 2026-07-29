@@ -1,7 +1,6 @@
 ---
 title: Your first build
 description: From an empty project to two artifacts and a cache that holds.
-icon: lucide/rocket
 ---
 
 # Your first build
@@ -33,19 +32,7 @@ icon: lucide/rocket
     0 built, 2 cached, 0 failed
     ```
 
-    Nothing changed, so nothing ran. When something does run, ask why.
-
-    ```console
-    $ pcmp plan --why
-    plan  9b35cd36a0d9
-
-      stale   release  dist/release/app.luau  a source file changed
-      fresh   dev      dist/dev/app.luau
-
-    1 stale, 1 fresh, 0 failed
-    ```
-
-    `plan --why` says what a build would do and does none of it, which is why it reports `stale` and `fresh` rather than `built` and `cached`.
+    Nothing changed, so nothing ran. When something does run, `pcmp plan --why` names what moved without building anything.
 
 ## vars
 
@@ -53,15 +40,7 @@ icon: lucide/rocket
 vars: { name: "app", version: "v0.0.0-dev", retries: 3 }
 ```
 
-Each var becomes two things.
-
-`{name}`
-
-:   A token you can put in a path or a header.
-
-`PCMP_NAME`
-
-:   A constant your source can read.
+Each var becomes two things: a `{name}` token you can put in a path or a header, and a `PCMP_NAME` constant your source can read.
 
 ```lua
 local channel: string = PCMP_VERSION
@@ -79,7 +58,7 @@ templates: { base: { entry: "src/init.luau", output: "dist/{profile}/{name}.luau
 profiles:  { dev: { extends: "base" }, release: { extends: "base" } }
 ```
 
-A **profile** is built. A **template** is not, and exists to be extended. Both are the same shape, and `extends` finds a name in either, so a profile can extend a profile just as easily.
+A profile is built. A template is not, and exists to be extended. Both are the same shape, and `extends` finds a name in either, so a profile can extend a profile just as easily.
 
 Nearer wins, field by field. `vars` and `define` accumulate, `darklua` merges key by key, and a list replaces outright.
 
@@ -107,11 +86,11 @@ In `dev` that folds to `if true` and stays. In `release` it folds to `if false`,
 
 !!! warning "What a define can reach"
 
-    `_G.DEBUG` and `_G["DEBUG"]` work the same way.
+    `_G.DEBUG` and `_G["DEBUG"]` are substituted the same way.
 
-    `getgenv().DEBUG` does not, because it is a function call and there is nothing to replace at build time.
+    `getgenv().DEBUG` is not, because it is a function call and there is nothing to replace at build time. Nothing reports this, so the branch simply survives into the artifact.
 
-Misspell one and `pcmp check` says so, through [`unreachable-define`](diagnostics.md#unreachable-define).
+Misspell a define and `pcmp check` says so, through [`unreachable-define`](diagnostics.md#unreachable-define).
 
 ```console
 $ pcmp check
@@ -164,4 +143,4 @@ pcmp build 'dist[flavour=min,target=roblox]'
 pcmp build dist --axis target=roblox
 ```
 
-[Manifest reference :octicons-arrow-right-24:](manifest.md){ .md-button .md-button--primary }
+Every field above is described in full under [Manifest](manifest.md).

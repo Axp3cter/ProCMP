@@ -2,3 +2,4 @@ target/
 .pcmp/
 dist/
 site/
+.cache/
