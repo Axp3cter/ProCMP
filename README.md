@@ -10,41 +10,17 @@
 
 ---
 
-A minified release, a readable debug build, a Roblox variant and a Lune variant, described
-in one file and built by one command. [darklua](https://darklua.com) is linked in as a
-library, so `pcmp` is a single binary with nothing to install alongside it.
-
 ```sh
 rokit add Proton-Utilities/ProCMP
 pcmp init
 pcmp build
 ```
 
-## Reproducible, including the parts that change
-
-A build is a function of what the manifest declares. Everything it takes from outside —
-an environment variable, a file, the clock — is recorded, so a version stamp or a build
-timestamp does not cost you reproducibility:
-
-```sh
-pcmp build --lock      # build, and write down what it read
-pcmp build --frozen    # build again from that record, and prove it matches
-```
-
-`--frozen` reproduces a build exactly, timestamp included, because the timestamp is one of
-the inputs the lock pins. `pcmp check` says so when a manifest reads something and no lock
-records it.
-
-## Commands
-
-`build` · `plan` · `check` · `watch` · `init` · `schema` · `explain`
-
-`pcmp help` describes every flag, and `pcmp explain <CODE>` describes any diagnostic you
-see. Neither is repeated here, so neither can go stale.
+Links in [darklua](https://darklua.com) as a library.
 
 ## Documentation
 
-[docs/](docs/) — a tutorial, the manifest reference, and how determinism works.
+[procmp.gitbook.io](https://procmp.gitbook.io) or [docs/](docs/)
 
 ## License
 

@@ -6,7 +6,7 @@
 //! are the file, with two placeholders.
 //!
 //! Nothing else is written. A generated `pcmp.schema.json` committed to a repository goes
-//! stale on the next upgrade with nothing to notice; `pcmp schema` emits one on demand and
+//! stale on the next upgrade with nothing to notice. `pcmp schema` emits one on demand, and
 //! `check` reports [`Code::StaleSchema`] when a committed copy has drifted.
 
 use super::format;

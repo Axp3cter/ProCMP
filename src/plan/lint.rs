@@ -71,7 +71,7 @@ pub fn run(
     diagnostics
 }
 
-/// A rule listed twice is fine; the ordering holds only if every `earlier` precedes every
+/// A rule listed twice is fine. The ordering holds only if every `earlier` precedes every
 /// `later`, so the first `later` is compared against the last `earlier`.
 fn ordering(task: &Task, diagnostics: &mut Vec<Diagnostic>) {
     let names = task.config.rule_names();
@@ -144,7 +144,7 @@ fn unread(task: &Task, sources: &str, diagnostics: &mut Vec<Diagnostic>) {
             .at(Location::new("profiles", task.profile.as_str())
                 .field("define")
                 .field(name))
-            .help("nothing will be substituted; check the spelling on both sides"),
+            .help("nothing will be substituted, so check the spelling on both sides"),
         );
     }
 }
@@ -196,7 +196,7 @@ fn shadowed(manifest: &Manifest, diagnostics: &mut Vec<Diagnostic>) {
 
 /// Two profiles that resolve to the same work, however differently they were written.
 ///
-/// What is compared is what the manifest said, normalised — not the assembled task. A task
+/// What is compared is what the manifest said, normalised, not the assembled task. A task
 /// carries `PCMP_PROFILE`, which differs by construction, so comparing tasks whole would
 /// never find anything. Output is excluded too: differing only there is the normal case.
 fn duplicates(plan: &Plan, diagnostics: &mut Vec<Diagnostic>) {
@@ -287,7 +287,7 @@ fn unrecorded(ledger: &Ledger, root: &AbsPath, diagnostics: &mut Vec<Diagnostic>
             Code::UnrecordedReading,
             "this manifest reads the clock or the environment, and nothing records it",
         )
-        .help("run `pcmp build --lock`; `pcmp build --frozen` then reproduces it exactly"),
+        .help("run `pcmp build --lock`, and `pcmp build --frozen` then reproduces it exactly"),
     );
 }
 
@@ -306,7 +306,7 @@ fn stale_schema(root: &AbsPath, diagnostics: &mut Vec<Diagnostic>) {
                 Code::StaleSchema,
                 "pcmp.schema.json does not match this version of pcmp",
             )
-            .help("regenerate it with `pcmp schema`, or delete it — it is not required"),
+            .help("regenerate it with `pcmp schema`, or delete it, because it is not required"),
         );
     }
 }

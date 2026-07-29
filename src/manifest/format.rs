@@ -51,7 +51,7 @@ pub struct Loaded {
     pub manifest: Manifest,
     /// The manifest itself, which `watch` follows even when it sits outside every root.
     pub path: AbsPath,
-    /// The directory every relative path resolves against — never the working directory.
+    /// The directory every relative path resolves against, never the working directory.
     pub root: AbsPath,
 }
 
@@ -110,7 +110,7 @@ pub fn load(path: &AbsPath, reader: &Rc<Reader>) -> Result<Loaded, Diagnostic> {
     })
 }
 
-/// `origin` names the file in messages; `root` is what a Luau manifest reads relative to.
+/// `origin` names the file in messages, and `root` is what a Luau manifest reads relative to.
 pub fn parse(
     text: &str,
     origin: &str,

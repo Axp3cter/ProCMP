@@ -35,6 +35,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --release
 
+  docs:
+    name: Generated reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      # The catalogue lives in the binary. A committed page that disagrees with it is
+      # worse than no page, so regenerating and diffing is the whole check.
+      - run: ./target/release/pcmp explain --format markdown > docs/diagnostics.md
+      - run: git diff --exit-code docs/diagnostics.md
+
   behaviour:
     name: Behaviour
     runs-on: ubuntu-latest

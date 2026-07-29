@@ -7,7 +7,7 @@
 //!
 //! Every unordered collection here is a `BTreeMap`, so key order is a property of the
 //! types rather than something to remember to impose. `serde_json::Map` is the exception
-//! — it preserves insertion order, because loader order depends on it — which is why
+//! because it preserves insertion order, on which loader order depends, which is why
 //! [`crate::plan::canonical`] sorts explicitly rather than trusting what it is given.
 
 pub mod format;
@@ -82,7 +82,7 @@ pub struct Manifest {
     pub profiles: BTreeMap<String, Profile>,
 }
 
-/// One build, or — with `axes` — one per axis combination.
+/// One build, or one per axis combination when it declares `axes`.
 ///
 /// Every field that replaces wholesale is an [`Option`], collections included:
 /// inheritance has to tell "not declared" from "declared empty". `vars` and `define`
@@ -161,7 +161,7 @@ impl Axis {
 /// darklua takes the first matching pattern, so order decides which loader wins.
 ///
 /// Both spellings are accepted. A data format writes its maps in the order they appear,
-/// so the map form is meaningful there; a Luau table has no order, which is why
+/// so the map form is meaningful there, whereas a Luau table has no order, which is why
 /// [`Code::LoadersUnordered`] rejects it from a Luau manifest.
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(untagged)]
@@ -238,7 +238,7 @@ impl Ident {
 }
 
 impl Scalar {
-    /// How a scalar reads inside a `{token}`. The injected define keeps its type; only
+    /// How a scalar reads inside a `{token}`. The injected define keeps its type, and only
     /// the template form is text.
     pub fn text(&self) -> String {
         match self {

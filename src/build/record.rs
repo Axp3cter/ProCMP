@@ -2,7 +2,7 @@
 //!
 //! `.pcmp/` is a local cache: disposable, gitignored, one record per task. `pcmp.lock` is
 //! provenance: committed, and what `--frozen` reproduces. Keeping them apart is what lets
-//! the lock stay still while the cache churns — a manifest that calls `pcmp.now()` would
+//! the lock stay still while the cache churns. A manifest that calls `pcmp.now()` would
 //! otherwise rewrite the lock on every invocation.
 
 use std::collections::BTreeMap;
@@ -29,7 +29,7 @@ pub struct Record {
     pub darklua: String,
     /// What darklua actually opened, so the next build hashes only these.
     pub read_set: Vec<RelPath>,
-    /// What this task wrote, so a later build can remove what it no longer writes —
+    /// What this task wrote, so a later build can remove what it no longer writes,
     /// and only that. `pcmp` never deletes a file it did not create.
     pub outputs: Vec<RelPath>,
 }

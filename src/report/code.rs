@@ -3,7 +3,55 @@
 //! This is the reference: `pcmp explain <CODE>` prints [`Code::description`], so there is
 //! no generated table anywhere that could disagree with it.
 
+use std::fmt::Write as _;
+
 use super::{Exit, Severity};
+
+/// Which stage of a run can report a code, and how the reference groups them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    Manifest,
+    Resolution,
+    Plan,
+    Execution,
+    Lint,
+}
+
+impl Phase {
+    const ORDER: &'static [Self] = &[
+        Self::Manifest,
+        Self::Resolution,
+        Self::Plan,
+        Self::Execution,
+        Self::Lint,
+    ];
+
+    const fn title(self) -> &'static str {
+        match self {
+            Self::Manifest => "Reading the manifest",
+            Self::Resolution => "Resolving the plan",
+            Self::Plan => "Checking the plan",
+            Self::Execution => "Building",
+            Self::Lint => "Lints",
+        }
+    }
+
+    const fn summary(self) -> &'static str {
+        match self {
+            Self::Manifest => {
+                "Nothing can be collected past a manifest that will not parse, so any of these stops the run on its own."
+            }
+            Self::Resolution => {
+                "Every profile is checked before the run gives up, so one edit can fix a page of these."
+            }
+            Self::Plan => "Whole-plan problems, found once every task is known.",
+            Self::Execution => "Reported per task. One failing task does not stop the others.",
+            Self::Lint => {
+                "Reported by `pcmp check`. Most are warnings, which `--strict` makes fail as well. The two rule-order codes are errors, because a rule that cannot fire is not a matter of taste."
+            }
+        }
+    }
+}
 
 /// Every way a run can go wrong, in the order the phases run.
 ///
@@ -213,6 +261,44 @@ impl Code {
         }
     }
 
+    /// Where in a run this can come from.
+    pub const fn phase(self) -> Phase {
+        match self {
+            Self::NoManifest
+            | Self::UnknownFormat
+            | Self::Unreadable
+            | Self::Syntax
+            | Self::NotATable
+            | Self::Eval
+            | Self::Budget
+            | Self::UnsetEnv => Phase::Manifest,
+
+            Self::OutputCollision | Self::OutputInInputs | Self::NoSuchTask | Self::Unresolved => {
+                Phase::Plan
+            }
+
+            Self::MissingEntryFile
+            | Self::UndeclaredInput
+            | Self::DarkluaConfig
+            | Self::ProcessFailed
+            | Self::NoOutput
+            | Self::WriteFailed
+            | Self::Frozen => Phase::Execution,
+
+            Self::FoldBeforeInject
+            | Self::BranchBeforeFold
+            | Self::UnreachableDefine
+            | Self::UnrecordedReading
+            | Self::ShadowedVar
+            | Self::OutputOutsideRoot
+            | Self::StaleSchema
+            | Self::UnusedTemplate
+            | Self::IdenticalProfiles => Phase::Lint,
+
+            _ => Phase::Resolution,
+        }
+    }
+
     pub fn parse(slug: &str) -> Option<Self> {
         ALL.iter().copied().find(|code| code.slug() == slug)
     }
@@ -255,7 +341,7 @@ follows, with a line and column where the parser reports one."
 
             Self::NotATable => {
                 "\
-A Luau manifest must evaluate to a table. It returned something else — commonly a
+A Luau manifest must evaluate to a table. It returned something else, commonly a
 missing `return`, which makes the chunk evaluate to nil."
             }
 
@@ -267,7 +353,7 @@ A Luau manifest raised an error while evaluating. The Luau traceback follows."
             Self::Budget => {
                 "\
 A Luau manifest exceeded its evaluation budget or its memory limit. A manifest describes
-a build; it is not the place for unbounded work. The usual cause is a loop whose
+a build. It is not the place for unbounded work. The usual cause is a loop whose
 condition never becomes false."
             }
 
@@ -354,7 +440,7 @@ with a `rule` key and that rule's own settings."
             Self::BadLoader => {
                 "\
 A loader names a strategy darklua does not have. Valid: copy, skip, luau, json,
-json_lines, toml, yaml, string, buffer, bytes — and the encoded forms string/base64,
+json_lines, toml, yaml, string, buffer, bytes, and the encoded forms string/base64,
 string/zstd, string/gzip and string/zlib, with buffer and bytes likewise."
             }
 
@@ -393,13 +479,13 @@ never built on its own."
             Self::Unresolved => {
                 "\
 The manifest was read, but the plan it describes could not be built. The findings printed
-above this one say why; this is only the summary. Nothing was built."
+above this one say why. This is only the summary. Nothing was built."
             }
 
             Self::OutputCollision => {
                 "\
 Two tasks write to the same path. They would race, and whichever finished last would
-win. Give them distinct `output` templates — `{profile}` and every axis are available as
+win. Give them distinct `output` templates, `{profile}` and every axis are available as
 tokens."
             }
 
@@ -411,8 +497,8 @@ back in as an input. Move the output outside every root, or exclude it with `ign
 
             Self::NoSuchTask => {
                 "\
-No task matched the selection. A selector is a profile name or an exact task identifier;
-use `--axis KEY=VALUE` to filter an expansion by coordinate."
+No task matched the selection. A selector is a profile name or an exact task identifier.
+Use `--axis KEY=VALUE` to filter an expansion by coordinate."
             }
 
             Self::MissingEntryFile => {
@@ -424,7 +510,7 @@ directory, not the working directory."
             Self::UndeclaredInput => {
                 "\
 darklua asked for a file that is not in this task's staged input set. A build reads only
-what the manifest declares, so a file outside every root cannot be reached — which is
+what the manifest declares, so a file outside every root cannot be reached, which is
 what stops an undeclared dependency from silently deciding the output. Add the directory
 holding it to `sources`."
             }
@@ -432,7 +518,7 @@ holding it to `sources`."
             Self::DarkluaConfig => {
                 "\
 darklua rejected the configuration this task compiles to. The emitted configuration is
-printed with the error; `pcmp plan <TASK>` shows the same thing without building."
+printed with the error, and `pcmp plan <TASK>` shows the same thing without building."
             }
 
             Self::ProcessFailed => {
@@ -456,7 +542,7 @@ renamed into place, so a failure here leaves the previous artifact intact."
             Self::Frozen => {
                 "\
 A `--frozen` build did not reproduce what `pcmp.lock` records. Either the plan resolved
-differently from the one the lock describes — the manifest changed since it was written —
+differently from the one the lock describes, the manifest changed since it was written,
 or a task produced different bytes from the same inputs. The differing tasks are named."
             }
 
@@ -464,7 +550,7 @@ or a task produced different bytes from the same inputs. The differing tasks are
                 "\
 `compute_expression` is scheduled before `inject_global_value`. Folding cannot see a
 value substituted after it runs, so the define has no effect. Every injection must
-precede every fold; `pcmp` places the injections it generates first, so this only arises
+precede every fold. `pcmp` places the injections it generates first, so this only arises
 when a manifest writes its own."
             }
 
@@ -485,7 +571,7 @@ read it."
                 "\
 The manifest read the clock or the environment, and no pcmp.lock exists. The build is
 reproducible only relative to those readings, and nothing records what they were. Run
-`pcmp build --lock` to write them down; `pcmp build --frozen` then reproduces the build
+`pcmp build --lock` to write them down, and `pcmp build --frozen` then reproduces the build
 exactly, timestamps included."
             }
 
@@ -505,7 +591,7 @@ means `pcmp` is modifying files no one reading the manifest would expect it to t
                 "\
 A pcmp.schema.json in the project differs from the schema this binary generates, so
 editor completion is describing a different version of the manifest format. Regenerate it
-with `pcmp schema`, or delete it — it is not required."
+with `pcmp schema`, or delete it, it is not required."
             }
 
             Self::UnusedTemplate => {
@@ -521,4 +607,49 @@ into a template and `extends` it, or give one of them an axis."
             }
         }
     }
+}
+
+/// The whole catalogue as a documentation page.
+///
+/// Written by `pcmp explain --format markdown`, and checked in CI against the copy in the
+/// repository. Generating it is the only way a reference of this size stays true: the
+/// binary is the source, and a page that disagrees with the binary fails the build.
+pub fn reference() -> String {
+    let mut out = String::from(
+        "---\n\
+         description: Every code pcmp can report, and what to do about it.\n\
+         icon: circle-exclamation\n\
+         ---\n\n\
+         # Diagnostics\n\n\
+         A code names one failure and never another. A message may be reworded, a code may \
+         not be reused.\n\n\
+         Every one of these is also available from the binary.\n\n\
+         ```sh\n\
+         pcmp explain missing-output\n\
+         ```\n\n\
+         {% hint style=\"info\" %}\n\
+         This page is generated by `pcmp explain --format markdown`, and CI fails when the \
+         committed copy stops matching the binary.\n\
+         {% endhint %}\n",
+    );
+
+    for phase in Phase::ORDER {
+        let _ = write!(out, "\n## {}\n\n{}\n", phase.title(), phase.summary());
+
+        for code in ALL.iter().filter(|code| code.phase() == *phase) {
+            let severity = match code.severity() {
+                Severity::Error => "error",
+                Severity::Warning => "warning",
+            };
+            let _ = write!(
+                out,
+                "\n### {}\n\n`{severity}`, exit code `{}`\n\n{}\n",
+                code.slug(),
+                code.exit() as u8,
+                code.description()
+            );
+        }
+    }
+
+    out
 }

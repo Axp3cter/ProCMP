@@ -1,6 +1,6 @@
 //! Resolution: a [`Manifest`] in, a [`Plan`] out.
 //!
-//! Pure — no filesystem, no clock, no network. Findings accumulate rather than
+//! Pure, with no filesystem, no clock and no network. Findings accumulate rather than
 //! short-circuit, so one edit can fix every profile a run complains about.
 //!
 //! This is where a manifest's `String`s become validated types. Nothing downstream can
@@ -119,7 +119,7 @@ impl Plan {
     }
 }
 
-/// Names for a "did you mean" line, or `<none>` — which is more use than an empty string
+/// Names for a "did you mean" line, or `<none>`, which is more use than an empty string
 /// in the middle of a sentence.
 pub fn listed<'a>(names: impl Iterator<Item = &'a str>) -> String {
     let names: Vec<&str> = names.collect();
@@ -130,7 +130,7 @@ pub fn listed<'a>(names: impl Iterator<Item = &'a str>) -> String {
     }
 }
 
-/// Warnings accompany a usable plan; any error suppresses it.
+/// Warnings accompany a usable plan, and any error suppresses it.
 pub fn resolve(manifest: &Manifest, overrides: &Overrides) -> Outcome<Plan> {
     let mut diagnostics = Vec::new();
     let mut tasks = Vec::new();
@@ -502,7 +502,7 @@ fn report<T>(
     }
 }
 
-/// Two tasks writing one path would race; a task writing into another's sources would
+/// Two tasks writing one path would race, and a task writing into another's sources would
 /// feed a build its own output.
 fn collisions(tasks: &[Task], diagnostics: &mut Vec<Diagnostic>) {
     let mut claimed: BTreeMap<&RelPath, &TaskId> = BTreeMap::new();

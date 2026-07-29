@@ -35,7 +35,7 @@ pub fn inputs(
         resources
             .write_bytes(absolute.as_std(), bytes)
             // `ResourceError` implements neither `Display` nor `Error`, so there is
-            // nothing to attach beyond the path — and an in-memory write has one way to
+            // nothing to attach beyond the path, and an in-memory write has one way to
             // fail, which the path already names.
             .map_err(|_| Diagnostic::new(Code::WriteFailed, format!("could not stage `{path}`")))?;
     }
@@ -46,7 +46,7 @@ pub fn inputs(
 /// Everything the task produced, named relative to the manifest.
 ///
 /// Reading the artifacts back out of memory is what lets headers be composed, digests be
-/// taken and stale files be spotted before anything touches the disk — so a failed task
+/// taken and stale files be spotted before anything touches the disk, so a failed task
 /// leaves the previous artifact exactly as it was.
 pub fn outputs(
     resources: &Resources,

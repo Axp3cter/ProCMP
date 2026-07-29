@@ -1,7 +1,7 @@
 //! Hashing a value by what it means rather than by how it was written.
 //!
 //! The whole struct goes in, so a field added to a [`super::Task`] cannot be left out of
-//! its cache key by forgetting to list it — which is exactly how `sources` and `ignore`
+//! its cache key by forgetting to list it, which is exactly how `sources` and `ignore`
 //! came to be missing from the digest this replaces.
 //!
 //! Key order is sorted away first. `serde_json::Map` preserves insertion order here,

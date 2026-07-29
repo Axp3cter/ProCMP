@@ -157,7 +157,7 @@ pub fn build(report: &Report, emit: bool, timings: bool, why: bool) {
             let _ = write!(row, "  ({} ms)", task.millis);
         }
         if why && let Some(reason) = task.why {
-            let _ = write!(row, "  — {}", reason.describe());
+            let _ = write!(row, "  ({})", reason.describe());
         }
         line(row);
 
@@ -207,7 +207,7 @@ fn report_to(diagnostics: &[Diagnostic], emit: bool, out: fn(String)) {
     out(format!("{errors} error(s), {warnings} warning(s)"));
 }
 
-/// One diagnostic, in the shape `error[missing-output]: …` — code first, so the reader
+/// One diagnostic, in the shape `error[missing-output]`, code first, so the reader
 /// knows what to pass to `pcmp explain`.
 pub fn rendered(diagnostic: &Diagnostic) -> String {
     let marker = match diagnostic.severity() {

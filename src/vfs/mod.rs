@@ -3,7 +3,7 @@
 //! Reading, writing, listing, renaming and removing happen here and nowhere else, so
 //! there is one place that maps an `io::Error` onto a diagnostic and one place that
 //! knows a write is a rename. [`path`] is the namespace, [`digest`] is content identity,
-//! [`walk`] is traversal; together they are what a file *is* to this crate.
+//! [`walk`] is traversal. Together they are what a file *is* to this crate.
 
 pub mod digest;
 pub mod path;
@@ -20,7 +20,7 @@ use crate::report::{Code, Diagnostic};
 /// Prefix of the temporary file an atomic write goes through.
 ///
 /// It has to sit beside its target, because a rename is only atomic within one
-/// filesystem — so it is briefly visible inside the project and must be recognisable
+/// filesystem, so it is briefly visible inside the project and must be recognisable
 /// everywhere that looks at a directory: the shape walk would count it as a file
 /// appearing, and `watch` would rebuild because of it.
 pub const TEMPORARY: &str = ".pcmp-write-";
@@ -73,7 +73,7 @@ pub fn write(path: &AbsPath, bytes: &[u8]) -> Result<(), Diagnostic> {
     std::fs::write(temporary.as_std(), bytes).map_err(|error| unwritable(&temporary, error))?;
 
     std::fs::rename(temporary.as_std(), path.as_std()).map_err(|error| {
-        // The temporary is dead either way; a failure to clear it must not mask the
+        // The temporary is dead either way, and a failure to clear it must not mask the
         // rename's own error.
         drop(std::fs::remove_file(temporary.as_std()));
         unwritable(path, error)
@@ -134,7 +134,7 @@ pub fn entries(directory: &AbsPath) -> Result<Vec<Entry>, Diagnostic> {
     Ok(found)
 }
 
-/// An unreadable link is still a link; its target reads as empty, which differs from
+/// An unreadable link is still a link, and its target reads as empty, which differs from
 /// every real target and so still moves the shape digest when it changes.
 fn link_target(directory: &AbsPath, name: &str) -> String {
     directory

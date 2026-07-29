@@ -18,8 +18,8 @@ const SETTLE: Duration = Duration::from_millis(200);
 /// Watches the manifest's directory and every extra root the selection declares.
 ///
 /// The plan is resolved once. Re-reading the manifest each cycle would mean a half-saved
-/// manifest producing a cascade of parse errors, and the useful signal — that sources
-/// changed — arrives far more often than the manifest does.
+/// manifest producing a cascade of parse errors, and the useful signal, that sources
+/// changed, arrives far more often than the manifest does.
 pub fn run(
     root: &AbsPath,
     cache: &AbsPath,

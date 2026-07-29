@@ -6,7 +6,7 @@
 //!
 //! The ledger is deliberately *not* a cache key. A resolved task is the result of
 //! applying these readings, so a reading that changed nothing in a task cannot have
-//! changed its output; hashing the ledger would rebuild every task whenever any
+//! changed its output. Hashing the ledger would rebuild every task whenever any
 //! environment variable moved.
 
 use std::cell::RefCell;

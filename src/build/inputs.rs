@@ -7,7 +7,7 @@
 //! covers the contents of the files darklua actually opened.
 //!
 //! Shape is where the old design spent its time. It walked every root and hashed every
-//! byte, which made a no-op rebuild linear in the size of the whole repository — 158 ms
+//! byte, which made a no-op rebuild linear in the size of the whole repository, at 158 ms
 //! beside a 460 MB `target/`. Walking without reading is flat in repository size.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -55,7 +55,7 @@ impl Scope {
         }
     }
 
-    /// The manifest's directory is always a root; `sources` adds to it.
+    /// The manifest's directory is always a root, and `sources` adds to it.
     ///
     /// Each root carries the prefix that names it relative to the manifest, so a file
     /// under `../shared` gets a name that is still relative to the manifest and still the
@@ -90,12 +90,12 @@ impl Scope {
 ///
 /// Files and symlinks only. A directory that holds nothing cannot change a build, and
 /// counting them would make every output directory a change the moment it is first
-/// created — so the first build after a clean checkout would never be cacheable. The
+/// created, so the first build after a clean checkout would never be cacheable. The
 /// negative-dependency case that shape exists for is a *file* appearing: adding
 /// `mod/init.luau` beside `mod.luau` moves the digest because the file does.
 ///
-/// A symlink's target is part of its entry, so retargeting one — which changes a build
-/// while changing no file — still moves the digest.
+/// A symlink's target is part of its entry, so retargeting one, which changes a build
+/// while changing no file, still moves the digest.
 pub fn shape(scope: &Scope, root: &AbsPath) -> Result<Digest, Diagnostic> {
     let globs = scope.globs()?;
     let mut entries: BTreeMap<String, String> = BTreeMap::new();
@@ -148,7 +148,7 @@ pub fn reads(
 
 /// The reads digest, over whatever set of files is handed to it.
 ///
-/// A cold build has to over-approximate, so it hashes everything in scope; the record it
+/// A cold build has to over-approximate, so it hashes everything in scope, so the record it
 /// then writes must hold the digest of the set darklua *actually* read, or the next build
 /// would compare a digest over one set against a digest over another and rebuild forever.
 pub fn fingerprint(contents: &BTreeMap<RelPath, Vec<u8>>) -> Digest {

@@ -1,4 +1,4 @@
-//! `pcmp` — multi-target build composition for Luau projects.
+//! `pcmp`, multi-target build composition for Luau projects.
 //!
 //! One crate, not a library and a binary: nothing outside this tree uses it, and a
 //! separate library target would mean every item it touches has to be `pub`, which is
@@ -6,7 +6,7 @@
 //!
 //! Four stages, in order: [`manifest`] is what the user wrote, [`plan`] is what will be
 //! built, [`build`] does it, and [`report`] is how any of them says something went wrong.
-//! [`vfs`] is what a file *is* to all of them — a name, an identity, and the one place
+//! [`vfs`] is what a file *is* to all of them: a name, an identity, and the one place
 //! that touches a disk.
 
 mod build;

@@ -96,7 +96,7 @@ pub fn overlay(base: &mut Profile, over: &Profile) {
     }
 }
 
-/// A declared field replaces; an absent one leaves what was inherited. This is why every
+/// A declared field replaces, and an absent one leaves what was inherited. This is why every
 /// wholesale field is an `Option`, collections included: a child clears an inherited list
 /// by declaring it empty, which is different from not mentioning it.
 fn replace<T: Clone>(base: &mut Option<T>, over: Option<&T>) {
@@ -111,7 +111,7 @@ fn extend<V: Clone>(base: &mut BTreeMap<String, V>, over: &BTreeMap<String, V>) 
     }
 }
 
-/// Objects merge, arrays and scalars replace, and `null` unsets — without which a child
+/// Objects merge, arrays and scalars replace, and `null` unsets, without which a child
 /// could never clear an inherited `bundle`.
 fn merge(base: &mut Map<String, Value>, over: &Map<String, Value>) {
     for (key, value) in over {

@@ -4,7 +4,7 @@
 //!
 //! Loaders are the awkward part. darklua takes the first matching pattern, but its loader
 //! deserialiser implements `visit_map` and not `visit_seq`, and `Configuration::add_loader`
-//! — which would let the order live in Rust — cannot be called from outside, because its
+//! which would let the order live in Rust, cannot be called from outside, because its
 //! `Loader` parameter is `pub` inside a private module and is not re-exported. So loaders
 //! must travel as a JSON map, and their order survives only because `serde_json` is built
 //! with `preserve_order`. That is why they are a `Vec` here, hashed as a sequence, and
@@ -145,7 +145,7 @@ fn check(loader: &Loader, at: &Location) -> Result<(), Diagnostic> {
         )
         .at(at.clone().field("use"))
         .help(
-            "copy, skip, luau, json, json_lines, toml, yaml, string, buffer, bytes — \
+            "copy, skip, luau, json, json_lines, toml, yaml, string, buffer, bytes, \
              and string/base64, string/zstd, string/gzip, string/zlib, likewise for \
              buffer and bytes",
         ));
@@ -161,7 +161,7 @@ fn check(loader: &Loader, at: &Location) -> Result<(), Diagnostic> {
     })
 }
 
-/// One loader, on its own, through darklua's own deserialiser — which is the only thing
+/// One loader, on its own, through darklua's own deserialiser, which is the only thing
 /// that knows what it accepts.
 fn probe(pattern: &str, loader: &str) -> Result<(), String> {
     let mut loaders = Map::new();
@@ -207,7 +207,7 @@ fn defaults() -> Vec<Value> {
 }
 
 /// Both spellings normalise to one ordered list. A map is meaningful in a data format,
-/// which writes its keys in the order they appear; a Luau table is rejected earlier, by
+/// which writes its keys in the order they appear. A Luau table is rejected earlier, by
 /// [`crate::manifest::format`], because it has no order to preserve.
 fn flatten(loaders: Option<&Loaders>) -> Vec<Loader> {
     match loaders {

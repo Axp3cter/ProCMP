@@ -1,6 +1,6 @@
 //! Directory traversal.
 //!
-//! Yields what is there; deciding what any of it means belongs to the caller. This is
+//! Yields what is there. Deciding what any of it means belongs to the caller. This is
 //! the traversal behind the shape digest, which is why an entry carries its kind and a
 //! symlink carries its target: a retarget changes the build without changing any file.
 

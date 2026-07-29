@@ -7,7 +7,7 @@
 
 mod code;
 
-pub use code::{ALL, Code};
+pub use code::{ALL, Code, reference};
 
 use std::error::Error;
 use std::fmt;
@@ -93,7 +93,7 @@ impl Diagnostic {
 
     /// Fills in a location only when the finding does not already know a better one.
     ///
-    /// A caller usually knows the profile; the leaf that failed usually knows the field.
+    /// A caller usually knows the profile, and the leaf that failed usually knows the field.
     /// The leaf wins.
     #[must_use]
     pub fn within(mut self, at: Location) -> Self {

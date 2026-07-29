@@ -5,7 +5,7 @@
 //! Write only what differs, so an unchanged artifact keeps its mtime and nothing
 //! downstream rebuilds for no reason. Write atomically, so an interrupted build leaves the
 //! previous artifact whole rather than half a file. And remove only what a *previous
-//! record* says this task wrote — never "everything under the output" — so a directory
+//! record* says this task wrote, never "everything under the output", so a directory
 //! output stops accumulating files whose sources were deleted, without `pcmp` ever
 //! deleting something it did not create.
 
@@ -16,7 +16,7 @@ use crate::vfs::{self, AbsPath, Digest, RelPath, digest};
 
 /// Extensions a header may be written to.
 ///
-/// A header is a Lua comment, so it belongs on Lua source and nowhere else — a `copy`
+/// A header is a Lua comment, so it belongs on Lua source and nowhere else, because a `copy`
 /// loader can put a `.png` in the output tree. Taken from darklua's own `lua_extension`
 /// when the manifest sets one, rather than from a list of its own.
 pub fn headable(lua_extension: Option<&str>) -> Vec<String> {
@@ -80,7 +80,7 @@ pub fn write(
     for (path, bytes) in artifacts {
         let absolute = root.join(path.as_str())?;
 
-        // Reading to compare costs one read; writing when nothing changed costs every
+        // Reading to compare costs one read. Writing when nothing changed costs every
         // watcher downstream a rebuild.
         if vfs::read(&absolute).is_ok_and(|existing| existing == *bytes) {
             continue;

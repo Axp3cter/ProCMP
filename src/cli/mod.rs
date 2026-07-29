@@ -127,6 +127,9 @@ enum Command {
     Explain {
         /// Omit to list every code.
         code: Option<String>,
+        /// `markdown` emits the whole catalogue as a documentation page.
+        #[arg(long, value_enum, default_value_t = Prose::Text)]
+        format: Prose,
     },
 }
 
@@ -134,6 +137,12 @@ enum Command {
 enum Shape {
     Json,
     Luau,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Prose {
+    Text,
+    Markdown,
 }
 
 /// A manifest found, loaded and resolved. Every command except `schema`, `init` and
@@ -234,7 +243,7 @@ pub fn run(cli: &Cli) -> Result<Exit, Diagnostic> {
             Ok(Exit::Success)
         }
 
-        Command::Explain { code } => explain(code.as_deref()),
+        Command::Explain { code, format } => explain(code.as_deref(), *format),
 
         Command::Init {
             name,
@@ -364,7 +373,7 @@ fn build(
 ///
 /// Two things are left out. Anything that is not Lua source, because a define is only ever
 /// substituted into Lua source. And the manifest itself, which lives inside the roots and
-/// names every define it declares — so including it would mean a misspelled define always
+/// names every define it declares, so including it would mean a misspelled define always
 /// found itself.
 fn sources(project: &Project) -> Option<String> {
     let cache = project.cache.relative_to(&project.root);
@@ -395,7 +404,12 @@ fn sources(project: &Project) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-fn explain(code: Option<&str>) -> Result<Exit, Diagnostic> {
+fn explain(code: Option<&str>, format: Prose) -> Result<Exit, Diagnostic> {
+    if format == Prose::Markdown {
+        render::line(report::reference());
+        return Ok(Exit::Success);
+    }
+
     let Some(code) = code else {
         for known in report::ALL {
             render::line(known.slug());
@@ -432,7 +446,7 @@ fn write_lock(project: &Project, report: &build::Report) -> Result<(), Diagnosti
     build::record::Lock::new(project.reader.ledger(), tasks).save(&project.root)
 }
 
-/// A frozen build has already produced its artifacts; this is only the comparison.
+/// A frozen build has already produced its artifacts, so this is only the comparison.
 fn frozen_verdict(project: &Project, report: &build::Report) -> Result<Exit, Diagnostic> {
     let Some(lock) = build::record::Lock::load(&project.root) else {
         return Err(Diagnostic::new(Code::Frozen, "no pcmp.lock to reproduce"));

@@ -118,7 +118,7 @@ pub fn of(bytes: impl AsRef<[u8]>) -> Digest {
 /// A digest over a named set of files.
 ///
 /// The reads tier and the artifacts tier are the same question asked of two different
-/// sets, so they are the same function given two different labels — which also means the
+/// sets, so they are the same function given two different labels, which also means the
 /// two can never drift into hashing the same bytes differently.
 pub fn of_files(label: &str, files: &BTreeMap<RelPath, Vec<u8>>) -> Digest {
     let mut hasher = Hasher::new();

@@ -91,7 +91,7 @@ impl AbsPath {
     /// Names `self` from `base`, climbing with `..` when it has to.
     ///
     /// A `sources` root may sit *beside* the manifest rather than below it, and anything
-    /// under it still needs a name relative to the manifest — otherwise it has no name at
+    /// under it still needs a name relative to the manifest, because otherwise it has no name at
     /// all, and a file with no name is a file no digest covers.
     ///
     /// [`None`] when the two share no root, or when they are the same path.
@@ -148,7 +148,7 @@ impl RelPath {
             ));
         }
 
-        // `a/../b` collapses to `b`; a leading `..` is kept, because it names a
+        // `a/../b` collapses to `b`, and a leading `..` is kept, because it names a
         // directory beside the root rather than an error.
         let mut segments: Vec<&str> = Vec::new();
         for segment in path.split(['/', '\\']) {

@@ -2,7 +2,7 @@
 //!
 //! Luau's own sandbox removes `os`, `io`, `load`, `dofile`, `debug` and `coroutine`, and
 //! [`REVOKED`] takes the rest. What is left of the outside reaches a manifest only
-//! through `pcmp`, and everything `pcmp` hands over is written into the ledger — which is
+//! through `pcmp`, and everything `pcmp` hands over is written into the ledger, which is
 //! what makes reading the clock safe rather than forbidden.
 
 use std::rc::Rc;
@@ -83,7 +83,7 @@ pub fn eval(
                 Code::Budget,
                 format!("`{origin}` exceeded its evaluation budget"),
             )
-            .help("a manifest describes a build; it has to terminate")
+            .help("a manifest describes a build, so it has to terminate")
         } else if message.contains(UNSET) {
             Diagnostic::new(Code::UnsetEnv, "an environment variable is not set").help(message)
         } else {
@@ -109,14 +109,14 @@ pub fn eval(
 }
 
 /// An empty Luau table is both an empty list and an empty map, and the language offers no
-/// way to say which — so `{}` arrives as a map wherever the target is untyped.
+/// way to say which, so `{}` arrives as a map wherever the target is untyped.
 ///
 /// That matters because an empty list is meaningful: `rules = {}` means "bundle and
 /// generate, transform nothing", which is different from omitting `rules` and getting
 /// darklua's defaults.
 ///
 /// Only the keys darklua reads as lists are converted. Turning *every* empty table into a
-/// list would break `bundle.require_mode.aliases = {}`, which is genuinely a map — and
+/// list would break `bundle.require_mode.aliases = {}`, which is genuinely a map, and
 /// breaking something that works is worse than leaving an ambiguity documented.
 fn disambiguate(manifest: &mut Manifest) {
     for profile in manifest

@@ -1,6 +1,6 @@
 //! Execution: a [`Plan`] in, artifacts out.
 //!
-//! A task is skipped only when all four digests match its record — configuration, shape,
+//! A task is skipped only when all four digests match its record: configuration, shape,
 //! reads and artifacts. The fourth is the one that notices an artifact edited by hand,
 //! which an inputs-only stamp never could.
 
@@ -102,7 +102,7 @@ impl Engine {
 
     /// Reports what each task would do without doing any of it, for `plan --why`.
     ///
-    /// Every digest is still computed; only the work is skipped.
+    /// Every digest is still computed, and only the work is skipped.
     pub fn inspect(&self, plan: &Plan, selection: &Plan) -> Report {
         self.execute(plan, selection, Work::Skip)
     }
@@ -341,7 +341,7 @@ fn read_set(
         .collect();
 
     // A directory entry is processed file by file rather than followed, so those are not
-    // external dependencies — but they are certainly reads.
+    // external dependencies, but they are certainly reads.
     found.extend(
         staged
             .iter()
@@ -364,7 +364,7 @@ fn lua_extension(task: &Task) -> Option<&str> {
 }
 
 fn failed(task: &Task, detail: &str) -> Diagnostic {
-    // An unstaged file is not a transformation failure; it is a dependency nobody
+    // An unstaged file is not a transformation failure. It is a dependency nobody
     // declared, and saying so is the whole point of staging.
     let code = if detail.contains("unable to find") {
         Code::UndeclaredInput
